@@ -157,6 +157,16 @@ const TEMPLATES = [
 
 const CATEGORIES = ['All', 'DMAIC', 'Kaizen', 'Lean', 'Tools', 'Custom']
 
+// Map icon names to components (for serialization to/from localStorage)
+const ICON_MAP = {
+  BarChart3,
+  Zap,
+  Leaf,
+  Users,
+  ClipboardList,
+  FileText,
+}
+
 // Export for use by Workspace
 export const DEFAULT_TEMPLATES = TEMPLATES
 
@@ -275,6 +285,7 @@ function CreateTemplateModal({ onClose, onSaved }) {
         category: form.category,
         type: form.type,
         icon: ClipboardList,
+        iconName: 'ClipboardList',
         color: 'bg-gray-50 text-gray-600 border-gray-200',
         headerColor: 'bg-gray-600',
         useFor: form.description || 'Custom template',
@@ -715,7 +726,13 @@ export default function Templates() {
     const saved = localStorage.getItem('custom_templates')
     if (saved) {
       try {
-        setCustomTemplates(JSON.parse(saved))
+        const parsed = JSON.parse(saved)
+        // Restore icon components (can't be serialized to JSON)
+        const restored = parsed.map(t => ({
+          ...t,
+          icon: ICON_MAP[t.iconName] || ClipboardList,
+        }))
+        setCustomTemplates(restored)
       } catch (err) {
         console.error('Error loading custom templates:', err)
       }
@@ -744,7 +761,12 @@ export default function Templates() {
     const saved = localStorage.getItem('custom_templates')
     if (saved) {
       try {
-        setCustomTemplates(JSON.parse(saved))
+        const parsed = JSON.parse(saved)
+        const restored = parsed.map(t => ({
+          ...t,
+          icon: ICON_MAP[t.iconName] || ClipboardList,
+        }))
+        setCustomTemplates(restored)
       } catch (err) {
         console.error('Error loading custom templates:', err)
       }
