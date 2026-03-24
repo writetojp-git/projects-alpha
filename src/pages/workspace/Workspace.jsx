@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
-  FolderOpen, ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2,
+  FolderOpen, ChevronDown, ChevronRight, Plus, Trash2,
   Loader2, AlertCircle, Calendar, Target, TrendingUp, BarChart3, Clock,
   CheckCircle2, XCircle, AlertTriangle, Save, X, Check,
   Activity, FileText, Upload, File, Download, Paperclip, RefreshCw
@@ -231,43 +231,42 @@ function computeHealth(phaseDates, sectionDates) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// PROJECT LIST VIEW
+// PROJECT SIDEBAR LIST
 // ─────────────────────────────────────────────────────────────
-function ProjectList({ projects, loading, onSelect }) {
+function ProjectSidebar({ projects, loading, selectedId, onSelect }) {
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-brand-orange" /></div>
+    return <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-brand-orange" /></div>
   }
   if (projects.length === 0) {
     return (
-      <div className="text-center py-16">
-        <FolderOpen size={40} className="text-gray-300 mx-auto mb-3" />
-        <p className="text-brand-charcoal font-medium">No active projects yet</p>
-        <p className="text-sm text-brand-charcoal mt-1">Convert approved intake requests to create projects</p>
+      <div className="text-center py-10 px-3">
+        <FolderOpen size={32} className="text-gray-300 mx-auto mb-2" />
+        <p className="text-sm text-brand-charcoal font-medium">No active projects</p>
+        <p className="text-xs text-brand-charcoal mt-1">Convert approved intake requests to create projects</p>
       </div>
     )
   }
   return (
-    <div className="grid gap-4">
-      {projects.map(p => (
-        <button key={p.id} onClick={() => onSelect(p)}
-          className="card hover:shadow-md transition-shadow text-left w-full">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <h3 className="font-bold text-brand-charcoal-dark truncate">{p.name}</h3>
-                <HealthBadge health={p.calculated_health || p.health || 'green'} />
-              </div>
-              <div className="flex items-center gap-4 text-sm text-brand-charcoal">
-                <span className="capitalize">{p.type || 'dmaic'}</span>
-                <span className="capitalize">Phase: {p.phase || 'Define'}</span>
-                {p.target_date && <span>Target: {new Date(p.target_date).toLocaleDateString()}</span>}
-                {p.project_lead && <span>Lead: {p.project_lead.full_name}</span>}
-              </div>
+    <div className="flex flex-col gap-1 p-2">
+      {projects.map(p => {
+        const isSelected = p.id === selectedId
+        const health = p.calculated_health || p.health || 'green'
+        const healthDot = { green: 'bg-green-400', yellow: 'bg-yellow-400', red: 'bg-red-400' }[health] || 'bg-green-400'
+        return (
+          <button key={p.id} onClick={() => onSelect(p)}
+            className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors ${isSelected ? 'bg-brand-orange/10 border border-brand-orange/30' : 'hover:bg-gray-100 border border-transparent'}`}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot}`} />
+              <span className={`text-sm font-semibold truncate ${isSelected ? 'text-brand-orange' : 'text-brand-charcoal-dark'}`}>{p.name}</span>
             </div>
-            <ChevronRight size={18} className="text-gray-400" />
-          </div>
-        </button>
-      ))}
+            <div className="flex items-center gap-2 pl-4 text-xs text-brand-charcoal">
+              <span className="capitalize">{p.type || 'dmaic'}</span>
+              <span className="text-gray-300">·</span>
+              <span className="capitalize">{p.phase || 'Define'}</span>
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -1064,7 +1063,7 @@ function ProjectBenefits({ projectId }) {
 // ─────────────────────────────────────────────────────────────
 // PROJECT DETAIL VIEW
 // ─────────────────────────────────────────────────────────────
-function ProjectDetail({ project, userProfile, onBack }) {
+function ProjectDetail({ project, userProfile }) {
   const [health, setHealth] = useState(project.health || 'green')
 
   const handleHealthChange = async (newHealth) => {
@@ -1077,21 +1076,16 @@ function ProjectDetail({ project, userProfile, onBack }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-brand-charcoal" />
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-brand-charcoal-dark">{project.name}</h1>
-            <HealthBadge health={health} />
-          </div>
-          <div className="flex items-center gap-4 text-sm text-brand-charcoal mt-1">
-            <span className="capitalize font-medium">{project.type || 'DMAIC'}</span>
-            <span className="capitalize">Phase: {project.phase || 'Define'}</span>
-            <span>Status: {project.status}</span>
-            {project.project_lead && <span>Lead: {project.project_lead.full_name}</span>}
-          </div>
+      <div>
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-2xl font-bold text-brand-charcoal-dark">{project.name}</h1>
+          <HealthBadge health={health} />
+        </div>
+        <div className="flex items-center gap-4 text-sm text-brand-charcoal">
+          <span className="capitalize font-medium">{project.type || 'DMAIC'}</span>
+          <span className="capitalize">Phase: {project.phase || 'Define'}</span>
+          <span>Status: {project.status}</span>
+          {project.project_lead && <span>Lead: {project.project_lead.full_name}</span>}
         </div>
       </div>
 
@@ -1160,17 +1154,41 @@ export default function Workspace() {
     return <div className="flex items-center justify-center py-20"><Loader2 size={28} className="animate-spin text-brand-orange" /></div>
   }
 
-  if (selectedProject) {
-    return <ProjectDetail project={selectedProject} userProfile={userProfile} onBack={() => setSelectedProject(null)} />
-  }
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-brand-charcoal-dark">Workspace</h1>
-        <p className="text-brand-charcoal text-sm mt-1">Select a project to manage phases, metrics, and track progress</p>
+    <div className="flex gap-0 h-full min-h-screen -mx-6 -mt-6">
+      {/* Left sidebar — project list */}
+      <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
+        <div className="px-4 py-4 border-b border-gray-100">
+          <h2 className="text-base font-bold text-brand-charcoal-dark">Workspace</h2>
+          <p className="text-xs text-brand-charcoal mt-0.5">
+            {projects.length} active project{projects.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <ProjectSidebar
+            projects={projects}
+            loading={loading}
+            selectedId={selectedProject?.id}
+            onSelect={setSelectedProject}
+          />
+        </div>
       </div>
-      <ProjectList projects={projects} loading={loading} onSelect={setSelectedProject} />
+
+      {/* Right panel — project detail */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        {selectedProject ? (
+          <ProjectDetail
+            project={selectedProject}
+            userProfile={userProfile}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center py-32">
+            <FolderOpen size={48} className="text-gray-200 mb-4" />
+            <p className="text-brand-charcoal font-medium">Select a project</p>
+            <p className="text-sm text-gray-400 mt-1">Choose a project from the left to view its phases and progress</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
