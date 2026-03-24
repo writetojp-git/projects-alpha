@@ -709,8 +709,42 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
     loadDates()
   }
 
-  const updateSectionDate = async (id, field, value) => {
+  const updateSectionField = async (id, field, value) => {
     await supabase.from('project_section_dates').update({ [field]: value || null }).eq('id', id)
+    loadDates()
+  }
+
+  const updateSectionStatus = async (sectionId, newStatus) => {
+    await supabase.from('project_section_dates').update({ status: newStatus }).eq('id', sectionId)
+
+    // Auto-update phase actual dates based on section completion
+    const section = sectionDates.find(s => s.id === sectionId)
+    if (section) {
+      const phase = phaseDates.find(p => p.phase_name === section.phase_name)
+      if (phase) {
+        const todayStr = new Date().toISOString().split('T')[0]
+        const otherSections = sectionDates.filter(s => s.phase_name === section.phase_name && s.id !== sectionId)
+        const updates = {}
+
+        // Set actual_start when first section becomes active
+        if (!phase.actual_start_date && (newStatus === 'in_progress' || newStatus === 'completed')) {
+          updates.actual_start_date = todayStr
+        }
+
+        // Set actual_end when ALL sections in the phase are completed
+        const allDone = newStatus === 'completed' && otherSections.every(s => s.status === 'completed')
+        if (allDone) {
+          updates.actual_end_date = todayStr
+        } else if (newStatus !== 'completed' && phase.actual_end_date) {
+          // Clear actual_end if a section was un-completed
+          updates.actual_end_date = null
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('project_phase_dates').update(updates).eq('id', phase.id)
+        }
+      }
+    }
     loadDates()
   }
 
@@ -834,14 +868,20 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
                           onChange={e => updatePhaseDate(pd.id, 'target_end_date', e.target.value)} />
                       </div>
                       <div>
-                        <label className="label text-xs">Actual Start</label>
-                        <input type="date" className="input py-1.5 text-sm" value={pd.actual_start_date || ''}
-                          onChange={e => updatePhaseDate(pd.id, 'actual_start_date', e.target.value)} />
+                        <label className="label text-xs flex items-center gap-1">
+                          Actual Start <span className="text-gray-400 font-normal normal-case">(auto)</span>
+                        </label>
+                        <div className={`input py-1.5 text-sm bg-gray-50 text-gray-500 ${!pd.actual_start_date ? 'italic text-gray-400' : ''}`}>
+                          {pd.actual_start_date || 'Not started'}
+                        </div>
                       </div>
                       <div>
-                        <label className="label text-xs">Actual End</label>
-                        <input type="date" className="input py-1.5 text-sm" value={pd.actual_end_date || ''}
-                          onChange={e => updatePhaseDate(pd.id, 'actual_end_date', e.target.value)} />
+                        <label className="label text-xs flex items-center gap-1">
+                          Actual End <span className="text-gray-400 font-normal normal-case">(auto)</span>
+                        </label>
+                        <div className={`input py-1.5 text-sm bg-gray-50 text-gray-500 ${!pd.actual_end_date ? 'italic text-gray-400' : ''}`}>
+                          {pd.actual_end_date || 'Not complete'}
+                        </div>
                       </div>
                     </div>
 
@@ -876,38 +916,56 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
                       {sections.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">No sections defined</p>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {sections.map(s => {
                             const sOverdue = ['pending', 'in_progress'].includes(s.status) && s.target_date && s.target_date < today
                             const sExpanded = expandedSection === s.id
                             const stepsValue = stepsCache[s.id] !== undefined ? stepsCache[s.id] : (s.steps || '')
+                            const isCompleted = s.status === 'completed'
 
                             return (
-                              <div key={s.id} className={`rounded-xl border ${sOverdue ? 'border-red-200 bg-red-50/40' : s.status === 'completed' ? 'border-green-200 bg-green-50/20' : 'border-gray-200 bg-gray-50/40'}`}>
+                              <div key={s.id} className={`rounded-lg border ${sOverdue ? 'border-red-200 bg-red-50/30' : isCompleted ? 'border-green-200 bg-green-50/20' : 'border-gray-200 bg-white'}`}>
                                 {/* Section header row */}
-                                <div className="flex items-center gap-2 p-2.5">
+                                <div className="flex items-center gap-2 px-3 py-2">
+                                  {/* Completion checkbox */}
+                                  <button
+                                    onClick={() => updateSectionStatus(s.id, isCompleted ? 'pending' : 'completed')}
+                                    className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${isCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'}`}>
+                                    {isCompleted && <Check size={11} className="text-white" />}
+                                  </button>
+
+                                  {/* Section name — click to expand for steps/docs */}
                                   <button
                                     onClick={() => setExpandedSection(sExpanded ? null : s.id)}
                                     className="flex items-center gap-1.5 flex-1 text-left min-w-0">
-                                    {sExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
-                                    <span className={`text-sm font-medium truncate ${s.status === 'completed' ? 'line-through text-gray-400' : 'text-brand-charcoal-dark'}`}>
-                                      {s.section_name}
+                                    <span className={`text-sm font-medium truncate ${isCompleted ? 'line-through text-gray-400' : 'text-brand-charcoal-dark'}`}>
+                                      {s.section_name || <span className="italic text-gray-400">Unnamed section</span>}
                                     </span>
-                                    {s.steps && <FileText size={12} className="text-brand-orange flex-shrink-0" title="Has steps" />}
-                                    {sOverdue && <AlertTriangle size={12} className="text-red-500 flex-shrink-0" />}
+                                    {s.steps && <FileText size={11} className="text-brand-orange flex-shrink-0" title="Has steps notes" />}
+                                    {sOverdue && <AlertTriangle size={11} className="text-red-500 flex-shrink-0" />}
+                                    {sExpanded
+                                      ? <ChevronDown size={12} className="text-gray-400 flex-shrink-0 ml-auto" />
+                                      : <ChevronRight size={12} className="text-gray-400 flex-shrink-0 ml-auto" />}
                                   </button>
-                                  <input type="date" className="input py-1 text-xs w-34"
+
+                                  {/* Due date */}
+                                  <input type="date"
+                                    className="text-xs border border-gray-200 rounded px-2 py-1 flex-shrink-0 w-[130px] focus:outline-none focus:border-brand-orange"
                                     value={s.target_date || ''}
-                                    onChange={e => updateSectionDate(s.id, 'target_date', e.target.value)} />
-                                  <select className="text-xs bg-white border border-gray-200 rounded px-1.5 py-1 flex-shrink-0"
-                                    value={s.status}
-                                    onChange={e => updateSectionDate(s.id, 'status', e.target.value)}>
-                                    <option value="pending">Pending</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="completed">Completed</option>
-                                  </select>
+                                    title="Due date"
+                                    onChange={e => updateSectionField(s.id, 'target_date', e.target.value)} />
+
+                                  {/* Docs icon */}
+                                  <button
+                                    onClick={() => setExpandedSection(sExpanded ? null : s.id)}
+                                    title="View/upload documents"
+                                    className={`p-1 flex-shrink-0 transition-colors ${sExpanded ? 'text-brand-orange' : 'text-gray-400 hover:text-brand-orange'}`}>
+                                    <Paperclip size={14} />
+                                  </button>
+
+                                  {/* Delete */}
                                   <button onClick={() => deleteSectionDate(s.id)}
-                                    className="p-1 text-gray-400 hover:text-red-500 flex-shrink-0">
+                                    className="p-1 text-gray-300 hover:text-red-500 flex-shrink-0 transition-colors">
                                     <Trash2 size={12} />
                                   </button>
                                 </div>
