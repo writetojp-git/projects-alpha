@@ -1,4 +1,4 @@
-import { Bell, Search, Plus, X } from 'lucide-react'
+import { Bell, Search, Plus, X, Send } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
@@ -35,13 +35,11 @@ export default function TopBar() {
   const [success, setSuccess] = useState(false)
 
   const [formData, setFormData] = useState({
-    projectName: '',
-    description: '',
-    projectType: 'general',
-    startDate: '',
-    targetDate: '',
+    title: '',
+    problemStatement: '',
+    department: '',
+    projectType: 'dmaic',
     estimatedSavings: '',
-    priority: '3',
   })
 
   const handleInputChange = (e) => {
@@ -54,13 +52,11 @@ export default function TopBar() {
 
   const resetForm = () => {
     setFormData({
-      projectName: '',
-      description: '',
-      projectType: 'general',
-      startDate: '',
-      targetDate: '',
+      title: '',
+      problemStatement: '',
+      department: '',
+      projectType: 'dmaic',
       estimatedSavings: '',
-      priority: '3',
     })
     setError(null)
     setSuccess(false)
@@ -71,9 +67,12 @@ export default function TopBar() {
     setError(null)
     setSuccess(false)
 
-    // Validate required field
-    if (!formData.projectName.trim()) {
+    if (!formData.title.trim()) {
       setError('Project name is required')
+      return
+    }
+    if (!formData.problemStatement.trim()) {
+      setError('Problem statement is required')
       return
     }
 
@@ -83,7 +82,7 @@ export default function TopBar() {
       // Fetch user profile to get company_id
       const { data: userProfile, error: profileError } = await supabase
         .from('profiles')
-        .select('company_id')
+        .select('company_id, id')
         .eq('id', user.id)
         .single()
 
@@ -93,30 +92,24 @@ export default function TopBar() {
         return
       }
 
-      // Insert new project
-      const { data: newProject, error: insertError } = await supabase
-        .from('projects')
+      // Insert into intake_requests (NOT projects — must go through prioritization)
+      const { error: insertError } = await supabase
+        .from('intake_requests')
         .insert([
           {
-            name: formData.projectName,
-            description: formData.description || null,
-            type: formData.projectType,
-            start_date: formData.startDate || null,
-            target_date: formData.targetDate || null,
+            title: formData.title.trim(),
+            problem_statement: formData.problemStatement.trim(),
+            department: formData.department.trim() || null,
+            project_type: formData.projectType,
             estimated_savings: formData.estimatedSavings ? parseFloat(formData.estimatedSavings) : null,
-            priority: parseInt(formData.priority),
-            status: 'active',
-            phase: 'define',
-            health: 'green',
             company_id: userProfile.company_id,
-            created_by: user.id,
-            project_lead_id: user.id,
+            requested_by: userProfile.id,
+            status: 'submitted',
           }
         ])
-        .select()
 
       if (insertError) {
-        setError(insertError.message || 'Failed to create project')
+        setError(insertError.message || 'Failed to submit request')
         setLoading(false)
         return
       }
@@ -124,11 +117,12 @@ export default function TopBar() {
       setSuccess(true)
       resetForm()
 
-      // Navigate to workspace after a brief delay
+      // Navigate to intake queue after a brief delay
       setTimeout(() => {
         setIsModalOpen(false)
-        navigate('/workspace')
-      }, 1000)
+        setSuccess(false)
+        navigate('/intake')
+      }, 1200)
     } catch (err) {
       setError(err.message || 'An unexpected error occurred')
     } finally {
@@ -151,13 +145,13 @@ export default function TopBar() {
           />
         </div>
 
-        {/* New Project */}
+        {/* New Request — available on every page */}
         <button
           onClick={() => setIsModalOpen(true)}
           className="btn-primary flex items-center gap-2 text-sm py-1.5"
         >
           <Plus size={15} />
-          New Project
+          + New Request
         </button>
 
         {/* Notifications */}
@@ -167,12 +161,15 @@ export default function TopBar() {
         </button>
       </div>
 
-      {/* New Project Modal */}
+      {/* New Request Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="card w-full max-w-md rounded-lg shadow-lg">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-brand-charcoal-dark">Create New Project</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-brand-charcoal-dark">Submit New Request</h2>
+                <p className="text-sm text-brand-charcoal mt-0.5">Your request will go through the prioritization process</p>
+              </div>
               <button
                 onClick={() => {
                   setIsModalOpen(false)
@@ -194,78 +191,67 @@ export default function TopBar() {
 
               {/* Success Message */}
               {success && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                  Project created successfully! Redirecting...
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-center gap-2">
+                  <Send size={14} />
+                  Request submitted! Redirecting to Intake Queue...
                 </div>
               )}
 
               {/* Project Name */}
               <div>
-                <label className="label block mb-1">Project Name *</label>
+                <label className="label block mb-1">Project Name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
-                  name="projectName"
-                  value={formData.projectName}
+                  name="title"
+                  value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="Enter project name"
+                  placeholder="e.g. Reduce Order Processing Time"
                   className="input w-full"
                   disabled={loading}
                 />
               </div>
 
-              {/* Description */}
+              {/* Problem Statement */}
               <div>
-                <label className="label block mb-1">Description</label>
+                <label className="label block mb-1">Problem Statement <span className="text-red-500">*</span></label>
                 <textarea
-                  name="description"
-                  value={formData.description}
+                  name="problemStatement"
+                  value={formData.problemStatement}
                   onChange={handleInputChange}
-                  placeholder="Enter project description"
-                  className="input w-full h-24 resize-none"
+                  placeholder="Describe the problem you're trying to solve"
+                  className="input w-full h-20 resize-none"
                   disabled={loading}
                 />
               </div>
 
-              {/* Project Type */}
-              <div>
-                <label className="label block mb-1">Project Type</label>
-                <select
-                  name="projectType"
-                  value={formData.projectType}
-                  onChange={handleInputChange}
-                  className="input w-full"
-                  disabled={loading}
-                >
-                  {projectTypes.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Start Date */}
-              <div>
-                <label className="label block mb-1">Start Date</label>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={formData.startDate}
-                  onChange={handleInputChange}
-                  className="input w-full"
-                  disabled={loading}
-                />
-              </div>
-
-              {/* Target Date */}
-              <div>
-                <label className="label block mb-1">Target Date</label>
-                <input
-                  type="date"
-                  name="targetDate"
-                  value={formData.targetDate}
-                  onChange={handleInputChange}
-                  className="input w-full"
-                  disabled={loading}
-                />
+              {/* Project Type + Department */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label block mb-1">Project Type</label>
+                  <select
+                    name="projectType"
+                    value={formData.projectType}
+                    onChange={handleInputChange}
+                    className="input w-full"
+                    disabled={loading}
+                  >
+                    {projectTypes.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label block mb-1">Department</label>
+                  <input
+                    type="text"
+                    name="department"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Operations"
+                    className="input w-full"
+                    disabled={loading}
+                  />
+                </div>
               </div>
 
               {/* Estimated Savings */}
@@ -284,24 +270,6 @@ export default function TopBar() {
                 />
               </div>
 
-              {/* Priority */}
-              <div>
-                <label className="label block mb-1">Priority (1-5)</label>
-                <select
-                  name="priority"
-                  value={formData.priority}
-                  onChange={handleInputChange}
-                  className="input w-full"
-                  disabled={loading}
-                >
-                  <option value="1">1 - Lowest</option>
-                  <option value="2">2</option>
-                  <option value="3">3 - Medium</option>
-                  <option value="4">4</option>
-                  <option value="5">5 - Highest</option>
-                </select>
-              </div>
-
               {/* Actions */}
               <div className="flex gap-3 pt-4">
                 <button
@@ -317,10 +285,11 @@ export default function TopBar() {
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary flex-1"
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
                   disabled={loading}
                 >
-                  {loading ? 'Creating...' : 'Create Project'}
+                  <Send size={14} />
+                  {loading ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
             </form>
