@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   BarChart3, ArrowRight, CheckCircle, Clock, Zap, TrendingUp,
-  ChevronUp, ChevronDown, Star, AlertCircle, FolderOpen, X
+  ChevronUp, ChevronDown, Star, AlertCircle, FolderOpen, X,
+  Sparkles, Eye
 } from 'lucide-react'
 
 // ─── Scoring Modal ───────────────────────────────────────────────────────────
@@ -303,6 +304,7 @@ export default function Portfolio() {
   const [activeSortDir, setActiveSortDir] = useState('asc')
   const [scoringItem, setScoringItem] = useState(null)
   const [convertingItem, setConvertingItem] = useState(null)
+  const [projectBenefits, setProjectBenefits] = useState({})
 
   const canScore = userProfile?.role && ['owner', 'program_leader', 'project_manager'].includes(userProfile.role)
 
@@ -342,7 +344,27 @@ export default function Portfolio() {
     }
     if (projectsRes.error) setError((e) => e + ' ' + projectsRes.error.message)
     else setActiveProjects(projectsRes.data || [])
-    setLoading(false)
+    
+      // Load benefits for all projects and intake requests
+      const allProjectIds = (projectsRes.data || []).map(p => p.id)
+      const allIntakeIds = [...(intakeRes.data || []).map(r => r.id), ...(projectsRes.data || []).filter(p => p.intake_id).map(p => p.intake_id)]
+      const benefitsMap = {}
+      if (allIntakeIds.length > 0 || allProjectIds.length > 0) {
+        const queries = []
+        if (allIntakeIds.length > 0) queries.push(supabase.from('project_benefits').select('*').in('intake_id', allIntakeIds))
+        if (allProjectIds.length > 0) queries.push(supabase.from('project_benefits').select('*').in('project_id', allProjectIds))
+        const results = await Promise.all(queries)
+        results.forEach(({ data: bData }) => {
+          (bData || []).forEach(b => {
+            const key = b.project_id || b.intake_id
+            if (!benefitsMap[key]) benefitsMap[key] = []
+            benefitsMap[key].push(b)
+          })
+        })
+      }
+      setProjectBenefits(benefitsMap)
+
+setLoading(false)
   }
 
   useEffect(() => {
@@ -498,6 +520,13 @@ export default function Portfolio() {
                               <div className="flex items-center gap-3 text-xs text-brand-charcoal">
                                 {item.department && <span>📍 {item.department}</span>}
                                 {item.estimated_savings && <span>💰 ${Number(item.estimated_savings).toLocaleString()}</span>}
+                                {(projectBenefits[item.id] || projectBenefits[item.intake_id])?.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {(projectBenefits[item.id] || projectBenefits[item.intake_id]).slice(0, 2).map((b, i) => (
+                                      <span key={i} className="text-xs bg-brand-orange/10 text-brand-orange px-1.5 py-0.5 rounded">{b.category_name}</span>
+                                    ))}
+                                  </div>
+                                )}
                                 <span className="capitalize">🔵 {item.project_type}</span>
                               </div>
                             </div>
@@ -554,7 +583,7 @@ export default function Portfolio() {
                               className="text-left pb-3 pr-4 font-medium cursor-pointer hover:text-brand-charcoal-dark"
                               onClick={() => toggleSort('estimated_savings')}
                             >
-                              <span className="flex items-center gap-1">Savings <SortIcon field="estimated_savings" /></span>
+                              <span className="flex items-center gap-1">Savings / Benefits <SortIcon field="estimated_savings" /></span>
                             </th>
                             <th
                               className="text-left pb-3 font-medium cursor-pointer hover:text-brand-charcoal-dark"
@@ -583,7 +612,21 @@ export default function Portfolio() {
                                   <span className="capitalize text-brand-charcoal">{item.project_type}</span>
                                 </td>
                                 <td className="py-3 pr-4 text-brand-charcoal">
-                                  {item.estimated_savings ? `$${Number(item.estimated_savings).toLocaleString()}` : '—'}
+                                  <div>
+                                    {item.estimated_savings ? <span className="font-medium">$${Number(item.estimated_savings).toLocaleString()}</span> : '—'}
+                                    {(projectBenefits[item.id] || projectBenefits[item.intake_id])?.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {(projectBenefits[item.id] || projectBenefits[item.intake_id]).slice(0, 3).map((b, i) => (
+                                          <span key={i} className="text-xs bg-brand-orange/10 text-brand-orange px-1.5 py-0.5 rounded">
+                                            {b.category_name}
+                                          </span>
+                                        ))}
+                                        {(projectBenefits[item.id] || projectBenefits[item.intake_id]).length > 3 && (
+                                          <span className="text-xs text-brand-charcoal">+{(projectBenefits[item.id] || projectBenefits[item.intake_id]).length - 3} more</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="py-3 pr-4 text-brand-charcoal">
                                   {item.department || '—'}
@@ -620,6 +663,29 @@ export default function Portfolio() {
 
               {/* ── Active Projects ── */}
               {tab === 'active' && (
+        {/* Benefits Summary */}
+        {Object.keys(projectBenefits).length > 0 && (
+          <div className="card mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={18} className="text-brand-orange" />
+              <h3 className="font-semibold text-brand-charcoal-dark">Portfolio Benefits Overview</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(() => {
+                const catCounts = {}
+                Object.values(projectBenefits).flat().forEach(b => {
+                  const cat = b.category_name || 'Other'
+                  catCounts[cat] = (catCounts[cat] || 0) + 1
+                })
+                return Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                  <span key={cat} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange/10 text-brand-orange rounded-full text-sm font-medium">
+                    {cat} <span className="bg-brand-orange text-white rounded-full px-1.5 text-xs">{count}</span>
+                  </span>
+                ))
+              })()}
+            </div>
+          </div>
+        )}
                 <div>
                   {activeProjects.length === 0 ? (
                     <div className="text-center py-20 text-brand-charcoal">
