@@ -344,63 +344,6 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
 
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // PHASE DATES SECTION
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââm">Metric</th>
-                      <th className="pb-2 font-medium">Unit</th>
-                      <th className="pb-2 font-medium">Baseline</th>
-                      <th className="pb-2 font-medium">Target</th>
-                      <th className="pb-2 font-medium">Actual</th>
-                      <th className="pb-2 font-medium">Status</th>
-                      <th className="pb-2 font-medium w-20"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map(m => (
-                      <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="py-2 font-medium text-brand-charcoal-dark">{m.metric_name}</td>
-                        <td className="py-2 text-brand-charcoal">{m.unit || 'â'}</td>
-                        <td className="py-2 text-brand-charcoal">{m.baseline_value || 'â'}</td>
-                        <td className="py-2 text-brand-charcoal">{m.target_value || 'â'}</td>
-                        <td className="py-2">
-                          {editingId === m.id ? (
-                            <input className="input py-1 text-sm w-24" defaultValue={m.actual_value || ''}
-                              onBlur={e => handleUpdate(m.id, { actual_value: e.target.value })}
-                              onKeyDown={e => { if (e.key === 'Enter') handleUpdate(m.id, { actual_value: e.target.value }) }}
-                              autoFocus />
-                          ) : (
-                            <span className="cursor-pointer hover:text-brand-orange" onClick={() => setEditingId(m.id)}>
-                              {m.actual_value || <span className="text-gray-400 italic">click to enter</span>}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2"><MetricStatusBadge status={m.status} /></td>
-                        <td className="py-2">
-                          <div className="flex items-center gap-1">
-                            <select className="text-xs bg-transparent border-0 p-0 cursor-pointer text-brand-charcoal"
-                              value={m.status} onChange={e => handleUpdate(m.id, { status: e.target.value })}>
-                              {Object.entries(METRIC_STATUS_CONFIG).map(([k, v]) => (
-                                <option key={k} value={k}>{v.label}</option>
-                              ))}
-                            </select>
-                            <button onClick={() => handleDelete(m.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// PHASE DATES SECTION
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
   const [phaseDates, setPhaseDates] = useState([])
@@ -562,11 +505,6 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
               </div>
             )
           })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // PROJECT BENEFITS DISPLAY
