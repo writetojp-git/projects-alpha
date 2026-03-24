@@ -439,7 +439,37 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
       {phaseDates.length === 0 ? (
         <div className="text-center py-8 text-brand-charcoal">
           <Calendar size={28} className="text-gray-300 mx-auto mb-2" />
-          <p className="text-sm">Click "Initialize Phases" to                {isExpanded && (
+          <p className="text-sm">Click "Initialize Phases" to set up the DMAIC timeline for this project.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {phaseDates.map(pd => {
+            const isExpanded = expandedPhase === pd.phase_name
+            const sections = sectionDates.filter(s => s.phase_name === pd.phase_name)
+            const isOverdue = ['pending', 'in_progress'].includes(pd.status) && pd.target_end_date && pd.target_end_date < today
+            const isNearDue = !isOverdue && ['pending', 'in_progress'].includes(pd.status) && pd.target_end_date &&
+              pd.target_end_date < new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+
+            return (
+              <div key={pd.id} className={`border rounded-xl overflow-hidden ${isOverdue ? 'border-red-300 bg-red-50/30' : isNearDue ? 'border-yellow-300 bg-yellow-50/30' : 'border-gray-200'}`}>
+                <button onClick={() => setExpandedPhase(isExpanded ? null : pd.phase_name)}
+                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50/50 transition-colors">
+                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <span className="font-semibold text-brand-charcoal-dark capitalize flex-1 text-left">{pd.phase_name}</span>
+                  {isOverdue && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><AlertTriangle size={12} /> Overdue</span>}
+                  {isNearDue && <span className="text-xs text-yellow-600 font-medium flex items-center gap-1"><Clock size={12} /> Due Soon</span>}
+                  <select className="text-xs bg-white border border-gray-200 rounded px-2 py-1" value={pd.status}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => { e.stopPropagation(); updatePhaseStatus(pd.id, e.target.value) }}>
+                    <option value="pending">Pending</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="skipped">Skipped</option>
+                  </select>
+                  {pd.status === 'completed' && <CheckCircle2 size={16} className="text-green-500" />}
+                </button>
+
+                {isExpanded && (
                   <div className="px-4 pb-4 space-y-3">
                     <div className="grid grid-cols-4 gap-3">
                       <div>
