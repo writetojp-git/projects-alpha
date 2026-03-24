@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
-  Plus, X, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle,
+  Plus, X, ChevronDown, Clock, CheckCircle2, XCircle,
   PauseCircle, ArrowRightCircle, Eye, Filter, Search,
-  ClipboardList, Loader2, AlertCircle, TrendingUp
+  ClipboardList, Loader2, AlertCircle, TrendingUp, Trash2
 } from 'lucide-react'
 
-// ── Status config ─────────────────────────────────────────────
+// ââ Status config âââââââââââââââââââââââââââââââââââââââââââââ
 const STATUS_CONFIG = {
   submitted:     { label: 'Submitted',     color: 'bg-blue-100 text-blue-700',    icon: Clock },
   under_review:  { label: 'Under Review',  color: 'bg-yellow-100 text-yellow-700', icon: Eye },
@@ -18,16 +18,51 @@ const STATUS_CONFIG = {
 }
 
 const PROJECT_TYPES = [
-  { value: 'dmaic',   label: 'DMAIC — Process Improvement' },
-  { value: 'dmadv',   label: 'DMADV — Design for Six Sigma' },
-  { value: 'kaizen',  label: 'Kaizen — Rapid Improvement Event' },
-  { value: 'lean',    label: 'Lean — Waste Elimination' },
-  { value: 'general', label: 'General — Other Initiative' },
+  { value: 'dmaic',   label: 'DMAIC â Process Improvement' },
+  { value: 'dmadv',   label: 'DMADV â Design for Six Sigma' },
+  { value: 'kaizen',  label: 'Kaizen â Rapid Improvement Event' },
+  { value: 'lean',    label: 'Lean â Waste Elimination' },
+  { value: 'general', label: 'General â Other Initiative' },
 ]
 
 const REVIEWER_ROLES = ['owner', 'program_leader', 'project_manager']
 
-// ── Status Badge ──────────────────────────────────────────────
+const UNIT_PLACEHOLDERS = {
+  currency: 'e.g. 50000',
+  percentage: 'e.g. 95',
+  number: 'e.g. 10',
+  days: 'e.g. 30',
+  text: 'e.g. High',
+}
+
+const UNIT_PREFIXES = {
+  currency: '$',
+  percentage: '',
+  number: '',
+  days: '',
+  text: '',
+}
+
+const UNIT_SUFFIXES = {
+  currency: '',
+  percentage: '%',
+  number: '',
+  days: ' days',
+  text: '',
+}
+
+function formatBenefitValue(val, unitType) {
+  if (!val && val !== 0) return 'â'
+  const prefix = UNIT_PREFIXES[unitType] || ''
+  const suffix = UNIT_SUFFIXES[unitType] || ''
+  if (unitType === 'currency') {
+    const num = Number(val)
+    return isNaN(num) ? val : `${prefix}${num.toLocaleString()}${suffix}`
+  }
+  return `${prefix}${val}${suffix}`
+}
+
+// ââ Status Badge ââââââââââââââââââââââââââââââââââââââââââââââ
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.submitted
   const Icon = cfg.icon
@@ -39,21 +74,111 @@ function StatusBadge({ status }) {
   )
 }
 
-// ── Submit Form Modal ─────────────────────────────────────────
+// ââ Benefit Row Component âââââââââââââââââââââââââââââââââââââ
+function BenefitRow({ benefit, categories, onChange, onRemove }) {
+  const cat = categories.find(c => c.id === benefit.category_id)
+  const unitType = cat?.unit_type || 'currency'
+
+  return (
+    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+      <div className="flex-1 min-w-0">
+        <select
+          className="input py-1.5 text-sm"
+          value={benefit.category_id}
+          onChange={e => {
+            const selected = categories.find(c => c.id === e.target.value)
+            onChange({ ...benefit, category_id: e.target.value, category_name: selected?.name || '' })
+          }}
+        >
+          <option value="">Select benefit typeâ¦</option>
+          {categories.map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+      <div className="w-40">
+        <div className="relative">
+          {unitType === 'currency' && (
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-charcoal text-sm">$</span>
+          )}
+          <input
+            className={`input py-1.5 text-sm ${unitType === 'currency' ? 'pl-7' : ''} ${unitType === 'percentage' ? 'pr-7' : ''}`}
+            type={unitType === 'text' ? 'text' : 'number'}
+            min="0"
+            step={unitType === 'currency' ? '1000' : unitType === 'percentage' ? '0.1' : '1'}
+            placeholder={UNIT_PLACEHOLDERS[unitType]}
+            value={benefit.estimated_value}
+            onChange={e => onChange({ ...benefit, estimated_value: e.target.value })}
+          />
+          {unitType === 'percentage' && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal text-sm">%</span>
+          )}
+          {unitType === 'days' && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal text-xs">days</span>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  )
+}
+
+// ââ Submit Form Modal âââââââââââââââââââââââââââââââââââââââââ
 function SubmitModal({ onClose, onSuccess, userProfile }) {
   const [form, setForm] = useState({
     title: '',
     problem_statement: '',
     business_case: '',
     expected_benefit: '',
-    estimated_savings: '',
     department: '',
     project_type: 'dmaic',
   })
+  const [benefits, setBenefits] = useState([])
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Load benefit categories
+  useEffect(() => {
+    supabase
+      .from('benefit_categories')
+      .select('*')
+      .eq('company_id', userProfile.company_id)
+      .eq('is_active', true)
+      .order('sort_order')
+      .then(({ data }) => {
+        setCategories(data || [])
+      })
+  }, [userProfile.company_id])
+
   const update = (field, val) => setForm(f => ({ ...f, [field]: val }))
+
+  const addBenefit = () => {
+    setBenefits(b => [...b, { category_id: '', category_name: '', estimated_value: '' }])
+  }
+
+  const updateBenefit = (idx, updated) => {
+    setBenefits(b => b.map((item, i) => i === idx ? updated : item))
+  }
+
+  const removeBenefit = (idx) => {
+    setBenefits(b => b.filter((_, i) => i !== idx))
+  }
+
+  // Calculate total estimated savings from currency-type benefits
+  const totalSavings = benefits.reduce((sum, b) => {
+    const cat = categories.find(c => c.id === b.category_id)
+    if (cat?.unit_type === 'currency' && b.estimated_value) {
+      return sum + (parseFloat(b.estimated_value) || 0)
+    }
+    return sum
+  }, 0)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -64,20 +189,46 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
     setLoading(true)
     setError('')
     try {
+      // Insert intake request (keep estimated_savings for backward compat)
       const payload = {
         title: form.title.trim(),
         problem_statement: form.problem_statement.trim(),
         business_case: form.business_case.trim() || null,
         expected_benefit: form.expected_benefit.trim() || null,
-        estimated_savings: form.estimated_savings ? parseFloat(form.estimated_savings) : null,
+        estimated_savings: totalSavings > 0 ? totalSavings : null,
         department: form.department.trim() || null,
         project_type: form.project_type,
         company_id: userProfile.company_id,
         requested_by: userProfile.id,
         status: 'submitted',
       }
-      const { error: err } = await supabase.from('intake_requests').insert(payload)
+      const { data: intake, error: err } = await supabase
+        .from('intake_requests')
+        .insert(payload)
+        .select()
+        .single()
       if (err) throw err
+
+      // Insert individual benefits
+      const validBenefits = benefits.filter(b => b.category_id && b.estimated_value)
+      if (validBenefits.length > 0) {
+        const benefitRows = validBenefits.map(b => {
+          const cat = categories.find(c => c.id === b.category_id)
+          const numericVal = parseFloat(b.estimated_value)
+          return {
+            company_id: userProfile.company_id,
+            intake_id: intake.id,
+            category_id: b.category_id,
+            category_name: b.category_name || cat?.name || '',
+            estimated_value: formatBenefitValue(b.estimated_value, cat?.unit_type || 'text'),
+            estimated_numeric: isNaN(numericVal) ? null : numericVal,
+            created_by: userProfile.id,
+          }
+        })
+        const { error: bErr } = await supabase.from('project_benefits').insert(benefitRows)
+        if (bErr) console.error('Benefits insert error:', bErr)
+      }
+
       onSuccess()
     } catch (err) {
       setError(err.message || 'Failed to submit request.')
@@ -120,20 +271,31 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
             />
           </div>
 
-          {/* Project Type */}
-          <div>
-            <label className="label">Project Type</label>
-            <div className="relative">
-              <select
-                className="input appearance-none pr-10"
-                value={form.project_type}
-                onChange={e => update('project_type', e.target.value)}
-              >
-                {PROJECT_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal pointer-events-none" />
+          {/* Project Type + Department */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Project Type</label>
+              <div className="relative">
+                <select
+                  className="input appearance-none pr-10"
+                  value={form.project_type}
+                  onChange={e => update('project_type', e.target.value)}
+                >
+                  {PROJECT_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal pointer-events-none" />
+              </div>
+            </div>
+            <div>
+              <label className="label">Department</label>
+              <input
+                className="input"
+                placeholder="e.g. Operations"
+                value={form.department}
+                onChange={e => update('department', e.target.value)}
+              />
             </div>
           </div>
 
@@ -142,7 +304,7 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
             <label className="label">Problem Statement <span className="text-red-500">*</span></label>
             <textarea
               className="input min-h-[90px] resize-none"
-              placeholder="Describe the problem you're trying to solve. Be specific — what is happening, where, and how often?"
+              placeholder="Describe the problem you're trying to solve. Be specific â what is happening, where, and how often?"
               value={form.problem_statement}
               onChange={e => update('problem_statement', e.target.value)}
               required
@@ -160,7 +322,7 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
             />
           </div>
 
-          {/* Expected Benefit */}
+          {/* Expected Benefit (text) */}
           <div>
             <label className="label">Expected Benefit</label>
             <textarea
@@ -171,28 +333,34 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
             />
           </div>
 
-          {/* Savings + Department row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Estimated Savings ($)</label>
-              <input
-                className="input"
-                type="number"
-                min="0"
-                step="1000"
-                placeholder="e.g. 50000"
-                value={form.estimated_savings}
-                onChange={e => update('estimated_savings', e.target.value)}
-              />
+          {/* Estimated Benefits â multi-select */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label mb-0">Estimated Benefits</label>
+              {totalSavings > 0 && (
+                <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                  Total savings: ${totalSavings.toLocaleString()}
+                </span>
+              )}
             </div>
-            <div>
-              <label className="label">Department</label>
-              <input
-                className="input"
-                placeholder="e.g. Operations"
-                value={form.department}
-                onChange={e => update('department', e.target.value)}
-              />
+            <div className="space-y-2">
+              {benefits.map((b, i) => (
+                <BenefitRow
+                  key={i}
+                  benefit={b}
+                  categories={categories}
+                  onChange={updated => updateBenefit(i, updated)}
+                  onRemove={() => removeBenefit(i)}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={addBenefit}
+                className="flex items-center gap-1.5 text-sm text-brand-orange hover:text-brand-orange-dark font-medium py-2 px-3 rounded-lg hover:bg-brand-orange/5 transition-colors"
+              >
+                <Plus size={14} />
+                Add Benefit
+              </button>
             </div>
           </div>
 
@@ -203,7 +371,7 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? (
-                <span className="flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Submitting…</span>
+                <span className="flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Submittingâ¦</span>
               ) : 'Submit Request'}
             </button>
           </div>
@@ -213,12 +381,22 @@ function SubmitModal({ onClose, onSuccess, userProfile }) {
   )
 }
 
-// ── Review Modal ──────────────────────────────────────────────
+// ââ Review Modal ââââââââââââââââââââââââââââââââââââââââââââââ
 function ReviewModal({ request, onClose, onSuccess, userProfile }) {
   const [action, setAction] = useState('approved')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [benefits, setBenefits] = useState([])
+
+  useEffect(() => {
+    if (!request?.id) return
+    supabase
+      .from('project_benefits')
+      .select('*')
+      .eq('intake_id', request.id)
+      .then(({ data }) => setBenefits(data || []))
+  }, [request?.id])
 
   const handleReview = async () => {
     setLoading(true)
@@ -265,12 +443,7 @@ function ReviewModal({ request, onClose, onSuccess, userProfile }) {
               <StatusBadge status={request.status} />
               <span className="text-brand-charcoal">{type?.label || request.project_type}</span>
               {request.department && (
-                <span className="text-brand-charcoal">· {request.department}</span>
-              )}
-              {request.estimated_savings && (
-                <span className="text-green-600 font-medium">
-                  · ${Number(request.estimated_savings).toLocaleString()} est. savings
-                </span>
+                <span className="text-brand-charcoal">Â· {request.department}</span>
               )}
             </div>
 
@@ -293,9 +466,34 @@ function ReviewModal({ request, onClose, onSuccess, userProfile }) {
               </div>
             )}
 
+            {/* Show itemized benefits */}
+            {benefits.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-brand-charcoal uppercase tracking-wide mb-2">Estimated Benefits</p>
+                <div className="space-y-1.5">
+                  {benefits.map(b => (
+                    <div key={b.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                      <span className="text-brand-charcoal-dark font-medium">{b.category_name}</span>
+                      <span className="text-green-600 font-medium">{b.estimated_value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Fallback: show old estimated_savings if no itemized benefits */}
+            {benefits.length === 0 && request.estimated_savings && (
+              <div className="flex items-center gap-2">
+                <TrendingUp size={14} className="text-green-600" />
+                <span className="text-green-600 font-medium">
+                  ${Number(request.estimated_savings).toLocaleString()} est. savings
+                </span>
+              </div>
+            )}
+
             <div className="text-xs text-brand-charcoal">
               Submitted by <span className="font-medium">{request.profiles?.full_name || 'Unknown'}</span>
-              {' · '}
+              {' Â· '}
               {new Date(request.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
           </div>
@@ -328,7 +526,7 @@ function ReviewModal({ request, onClose, onSuccess, userProfile }) {
             <label className="label">Review Notes</label>
             <textarea
               className="input min-h-[80px] resize-none"
-              placeholder="Add context for the requestor about your decision…"
+              placeholder="Add context for the requestor about your decisionâ¦"
               value={notes}
               onChange={e => setNotes(e.target.value)}
             />
@@ -346,7 +544,7 @@ function ReviewModal({ request, onClose, onSuccess, userProfile }) {
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button onClick={handleReview} className="btn-primary" disabled={loading}>
               {loading ? (
-                <span className="flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Saving…</span>
+                <span className="flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Savingâ¦</span>
               ) : 'Submit Decision'}
             </button>
           </div>
@@ -356,9 +554,20 @@ function ReviewModal({ request, onClose, onSuccess, userProfile }) {
   )
 }
 
-// ── Detail Modal ──────────────────────────────────────────────
+// ââ Detail Modal ââââââââââââââââââââââââââââââââââââââââââââââ
 function DetailModal({ request, onClose }) {
   const type = PROJECT_TYPES.find(t => t.value === request.project_type)
+  const [benefits, setBenefits] = useState([])
+
+  useEffect(() => {
+    if (!request?.id) return
+    supabase
+      .from('project_benefits')
+      .select('*')
+      .eq('intake_id', request.id)
+      .then(({ data }) => setBenefits(data || []))
+  }, [request?.id])
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -372,7 +581,7 @@ function DetailModal({ request, onClose }) {
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={request.status} />
             <span className="text-brand-charcoal">{type?.label}</span>
-            {request.department && <span className="text-brand-charcoal">· {request.department}</span>}
+            {request.department && <span className="text-brand-charcoal">Â· {request.department}</span>}
           </div>
 
           <div>
@@ -396,7 +605,23 @@ function DetailModal({ request, onClose }) {
             ) : null
           )}
 
-          {request.estimated_savings && (
+          {/* Itemized benefits */}
+          {benefits.length > 0 && (
+            <div className="bg-green-50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Estimated Benefits</p>
+              <div className="space-y-1.5">
+                {benefits.map(b => (
+                  <div key={b.id} className="flex items-center justify-between">
+                    <span className="text-brand-charcoal-dark">{b.category_name}</span>
+                    <span className="text-green-700 font-medium">{b.estimated_value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fallback for legacy single savings */}
+          {benefits.length === 0 && request.estimated_savings && (
             <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl">
               <TrendingUp size={16} className="text-green-600" />
               <span className="text-green-700 font-medium">
@@ -417,7 +642,7 @@ function DetailModal({ request, onClose }) {
   )
 }
 
-// ── Main Intake Page ──────────────────────────────────────────
+// ââ Main Intake Page ââââââââââââââââââââââââââââââââââââââââââ
 export default function Intake() {
   const { user } = useAuth()
   const [requests, setRequests] = useState([])
@@ -429,8 +654,6 @@ export default function Intake() {
   const [showSubmit, setShowSubmit] = useState(false)
   const [reviewTarget, setReviewTarget] = useState(null)
   const [detailTarget, setDetailTarget] = useState(null)
-  const [sortField, setSortField] = useState('created_at')
-  const [sortDir, setSortDir] = useState('desc')
 
   // Load profile
   useEffect(() => {
@@ -460,26 +683,6 @@ export default function Intake() {
 
   const isReviewer = userProfile && REVIEWER_ROLES.includes(userProfile.role)
 
-  // Toggle sort function
-  const toggleSort = (field) => {
-    if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDir('desc')
-    }
-  }
-
-  // Sort icon component
-  const SortIcon = ({ field }) => {
-    if (sortField !== field) {
-      return <ChevronUp size={13} className="text-brand-charcoal/30" />
-    }
-    return sortDir === 'asc'
-      ? <ChevronUp size={13} className="text-brand-orange" />
-      : <ChevronDown size={13} className="text-brand-orange" />
-  }
-
   // Filtered lists
   const filtered = requests.filter(r => {
     const matchesStatus = statusFilter === 'all' || r.status === statusFilter
@@ -490,23 +693,7 @@ export default function Intake() {
   })
 
   const myRequests = requests.filter(r => r.requested_by === userProfile?.id)
-  const unsortedList = activeTab === 'mine' ? myRequests : filtered
-
-  // Apply sorting
-  const displayList = [...unsortedList].sort((a, b) => {
-    let av = sortField.includes('.')
-      ? sortField.split('.').reduce((obj, key) => obj?.[key], a) ?? ''
-      : a[sortField] ?? ''
-    let bv = sortField.includes('.')
-      ? sortField.split('.').reduce((obj, key) => obj?.[key], b) ?? ''
-      : b[sortField] ?? ''
-
-    if (typeof av === 'string') av = av.toLowerCase()
-    if (typeof bv === 'string') bv = bv.toLowerCase()
-    if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av
-
-    return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
-  })
+  const displayList = activeTab === 'mine' ? myRequests : filtered
 
   // Stats
   const stats = {
@@ -575,7 +762,7 @@ export default function Intake() {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-charcoal" />
               <input
                 className="input pl-9 py-2 text-sm"
-                placeholder="Search requests…"
+                placeholder="Search requestsâ¦"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
@@ -628,44 +815,14 @@ export default function Intake() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th
-                    onClick={() => toggleSort('title')}
-                    className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                  >
-                    <span className="flex items-center gap-1">Project Name <SortIcon field="title" /></span>
-                  </th>
-                  <th
-                    onClick={() => toggleSort('project_type')}
-                    className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                  >
-                    <span className="flex items-center gap-1">Type <SortIcon field="project_type" /></span>
-                  </th>
+                  <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Project Name</th>
+                  <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Type</th>
                   {activeTab === 'queue' && (
-                    <th
-                      onClick={() => toggleSort('profiles.full_name')}
-                      className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                    >
-                      <span className="flex items-center gap-1">Submitted By <SortIcon field="profiles.full_name" /></span>
-                    </th>
+                    <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Submitted By</th>
                   )}
-                  <th
-                    onClick={() => toggleSort('status')}
-                    className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                  >
-                    <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
-                  </th>
-                  <th
-                    onClick={() => toggleSort('estimated_savings')}
-                    className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                  >
-                    <span className="flex items-center gap-1">Savings <SortIcon field="estimated_savings" /></span>
-                  </th>
-                  <th
-                    onClick={() => toggleSort('created_at')}
-                    className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide cursor-pointer hover:text-brand-charcoal-dark transition-colors"
-                  >
-                    <span className="flex items-center gap-1">Date <SortIcon field="created_at" /></span>
-                  </th>
+                  <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Est. Savings</th>
+                  <th className="text-left py-3 px-4 font-semibold text-brand-charcoal text-xs uppercase tracking-wide">Date</th>
                   <th className="py-3 px-4" />
                 </tr>
               </thead>
@@ -683,11 +840,11 @@ export default function Intake() {
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-brand-charcoal">
-                        {typeCfg?.label.split(' — ')[0] || req.project_type.toUpperCase()}
+                        {typeCfg?.label.split(' â ')[0] || req.project_type.toUpperCase()}
                       </td>
                       {activeTab === 'queue' && (
                         <td className="py-3.5 px-4 text-brand-charcoal">
-                          {req.profiles?.full_name || '—'}
+                          {req.profiles?.full_name || 'â'}
                         </td>
                       )}
                       <td className="py-3.5 px-4">
@@ -696,7 +853,7 @@ export default function Intake() {
                       <td className="py-3.5 px-4 text-brand-charcoal">
                         {req.estimated_savings
                           ? <span className="text-green-600 font-medium">${Number(req.estimated_savings).toLocaleString()}</span>
-                          : '—'}
+                          : 'â'}
                       </td>
                       <td className="py-3.5 px-4 text-brand-charcoal whitespace-nowrap">
                         {new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
