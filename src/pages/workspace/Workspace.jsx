@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -454,6 +455,7 @@ function ProjectDetail({ project, userId, userRole, onProjectUpdated }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Workspace() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [userProfile, setUserProfile] = useState(null)
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
@@ -477,13 +479,27 @@ export default function Workspace() {
       .order('updated_at', { ascending: false })
     const list = data || []
     setProjects(list)
+
+    // Check for ?project=<id> URL parameter to auto-select
+    const projectIdParam = searchParams.get('project')
+    if (projectIdParam) {
+      const targetProject = list.find(p => p.id === projectIdParam)
+      if (targetProject) {
+        setSelectedProject(targetProject)
+        // Clear the URL param after selecting so subsequent navigations work normally
+        setSearchParams({}, { replace: true })
+        setLoading(false)
+        return
+      }
+    }
+
     if (!selectedProject && list.length > 0) setSelectedProject(list[0])
     if (selectedProject) {
       const refreshed = list.find(p => p.id === selectedProject.id)
       if (refreshed) setSelectedProject(refreshed)
     }
     setLoading(false)
-  }, [selectedProject])
+  }, [selectedProject, searchParams])
 
   useEffect(() => {
     if (userProfile?.company_id) fetchProjects(userProfile)
