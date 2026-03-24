@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -288,6 +289,7 @@ function ScoreBar({ score, max = 20 }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Portfolio() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [userProfile, setUserProfile] = useState(null)
   const [tab, setTab] = useState('active')  // Default to Active Projects
   const [approved, setApproved] = useState([])      // approved intake items not yet scored (or re-score)
@@ -670,9 +672,9 @@ export default function Portfolio() {
                         </thead>
                         <tbody className="divide-y divide-surface-border">
                           {sortedActiveProjects.map((p) => (
-                            <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
+                            <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors cursor-pointer" onClick={() => navigate(`/workspace?project=${p.id}`)}>
                               <td className="py-3 pr-4">
-                                <div className="font-medium text-brand-charcoal-dark">{p.name}</div>
+                                <div className="font-medium text-brand-orange hover:text-brand-orange-dark hover:underline">{p.name}</div>
                                 {p.description && <div className="text-xs text-brand-charcoal line-clamp-1 max-w-xs">{p.description}</div>}
                               </td>
                               <td className="py-3 pr-4">
