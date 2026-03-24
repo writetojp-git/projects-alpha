@@ -5,7 +5,7 @@ import {
   FolderOpen, ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2,
   Loader2, AlertCircle, Calendar, Target, TrendingUp, BarChart3, Clock,
   CheckCircle2, XCircle, AlertTriangle, Save, X, Check,
-  Activity, FileText, Upload, File, Download, Paperclip
+  Activity, FileText, Upload, File, Download, Paperclip, RefreshCw
 } from 'lucide-react'
 
 // ── Template Phases per project type ─────────────────────────
@@ -666,6 +666,39 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
     loadDates()
   }
 
+  const resetAndReinitialize = async () => {
+    if (!window.confirm(
+      `This will delete all existing phases and sections for this project and reinitialize from the ${(projectType || 'dmaic').toUpperCase()} template.\n\nSteps, due dates, and uploaded documents will be lost. Continue?`
+    )) return
+    setSaving(true)
+    try {
+      await supabase.from('project_section_dates').delete().eq('project_id', projectId)
+      await supabase.from('project_phase_dates').delete().eq('project_id', projectId)
+      const phaseRows = templatePhases.map(p => ({
+        project_id: projectId,
+        phase_name: p.name,
+        phase_order: p.order,
+        status: 'pending',
+      }))
+      await supabase.from('project_phase_dates').insert(phaseRows)
+      const sectionRows = templatePhases.flatMap(phase =>
+        phase.sections.map(sectionName => ({
+          project_id: projectId,
+          phase_name: phase.name,
+          section_name: sectionName,
+          status: 'pending',
+        }))
+      )
+      if (sectionRows.length > 0) {
+        await supabase.from('project_section_dates').insert(sectionRows)
+      }
+    } catch (err) {
+      console.error('Reset error:', err)
+    }
+    setSaving(false)
+    loadDates()
+  }
+
   const updatePhaseDate = async (id, field, value) => {
     await supabase.from('project_phase_dates').update({ [field]: value || null }).eq('id', id)
     loadDates()
@@ -722,12 +755,20 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
             </span>
           )}
         </div>
-        {phaseDates.length === 0 && (
+        {phaseDates.length === 0 ? (
           <button onClick={initializePhases}
             className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3" disabled={saving}>
             {saving
               ? <Loader2 size={14} className="animate-spin" />
               : <><Plus size={14} /> Initialize Phases</>}
+          </button>
+        ) : (
+          <button onClick={resetAndReinitialize}
+            className="flex items-center gap-1.5 text-xs text-brand-charcoal border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors" disabled={saving}
+            title={`Reset and reload phases from ${(projectType || 'dmaic').toUpperCase()} template`}>
+            {saving
+              ? <Loader2 size={12} className="animate-spin" />
+              : <><RefreshCw size={12} /> Reinitialize from Template</>}
           </button>
         )}
       </div>
