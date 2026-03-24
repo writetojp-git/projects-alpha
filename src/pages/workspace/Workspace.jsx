@@ -1,33 +1,182 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
-  FolderOpen, ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2, Pencil,
+  FolderOpen, ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2,
   Loader2, AlertCircle, Calendar, Target, TrendingUp, BarChart3, Clock,
-  CheckCircle2, XCircle, AlertTriangle, Shield, Save, X, Check,
-  Activity, Eye, Sparkles
+  CheckCircle2, XCircle, AlertTriangle, Save, X, Check,
+  Activity, FileText, Upload, File, Download, Paperclip
 } from 'lucide-react'
 
-// ââ Phase config âââââââââââââââââââââââââââââââââââââââââââââ
-const DMAIC_PHASES = [
-  { key: 'define', label: 'Define', order: 1 },
-  { key: 'measure', label: 'Measure', order: 2 },
-  { key: 'analyze', label: 'Analyze', order: 3 },
-  { key: 'improve', label: 'Improve', order: 4 },
-  { key: 'control', label: 'Control', order: 5 },
-]
+// ── Template Phases per project type ─────────────────────────
+const TEMPLATE_PHASES = {
+  dmaic: [
+    {
+      name: 'Define', order: 1, sections: [
+        'Project Charter', 'Problem Statement', 'Goal Statement',
+        'SIPOC Diagram', 'Voice of Customer (VOC)', 'Project Scope',
+        'Business Case', 'Team & Stakeholders', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Measure', order: 2, sections: [
+        'Data Collection Plan', 'Process Map (Detailed)',
+        'Measurement System Analysis (MSA/Gage R&R)',
+        'Baseline Performance (Cpk, Sigma Level)',
+        'Process Capability Study', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Analyze', order: 3, sections: [
+        'Fishbone / Ishikawa Diagram', '5-Why Analysis',
+        'Hypothesis Testing', 'Root Cause Validation',
+        'Pareto Analysis', 'Regression / ANOVA', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Improve', order: 4, sections: [
+        'Solution Generation (Brainstorming)', 'Solution Selection Matrix',
+        'Failure Mode & Effects Analysis (FMEA)', 'Pilot Plan & Results',
+        'Cost-Benefit Analysis', 'Implementation Plan', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Control', order: 5, sections: [
+        'Control Plan', 'Statistical Process Control (SPC) Setup',
+        'Standard Operating Procedures (SOPs)', 'Training Plan',
+        'Response Plan', 'Handover to Process Owner',
+        'Project Closure & Lessons Learned',
+      ],
+    },
+  ],
+  dmadv: [
+    {
+      name: 'Define', order: 1, sections: [
+        'Project Charter', 'Customer Needs (VOC)', 'Business Case',
+        'Team & Stakeholders', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Measure', order: 2, sections: [
+        'CTQ Tree', 'Benchmarking', 'Measurement Plan', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Analyze', order: 3, sections: [
+        'Design Concepts', 'Pugh Matrix / Concept Selection',
+        'Risk Assessment (FMEA)', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Design', order: 4, sections: [
+        'Detailed Design', 'Prototype / Pilot', 'Design Validation',
+        'Implementation Plan', 'Tollgate Sign-off',
+      ],
+    },
+    {
+      name: 'Verify', order: 5, sections: [
+        'Pilot Results', 'Full-scale Rollout', 'Control Plan',
+        'Handover & Closure',
+      ],
+    },
+  ],
+  kaizen: [
+    {
+      name: 'Plan', order: 1, sections: [
+        'Problem Definition', 'Current State Map', 'Goal Setting',
+        'Team Charter',
+      ],
+    },
+    {
+      name: 'Do', order: 2, sections: [
+        'Kaizen Event Execution', 'Quick Wins Implementation',
+        'Future State Map', 'Action Log',
+      ],
+    },
+    {
+      name: 'Check', order: 3, sections: [
+        'Results Measurement', 'Before vs After Comparison',
+        'Gap Analysis',
+      ],
+    },
+    {
+      name: 'Act', order: 4, sections: [
+        'Standardize Improvements', 'Training & Communication',
+        'Sustain Plan', 'Lessons Learned',
+      ],
+    },
+  ],
+  lean: [
+    {
+      name: 'Identify', order: 1, sections: [
+        'Value Stream Mapping (Current)', 'Waste Identification (8 Wastes)',
+        'Problem Statement', 'Scope & Goals',
+      ],
+    },
+    {
+      name: 'Analyze', order: 2, sections: [
+        'Root Cause Analysis', 'Takt Time Calculation',
+        'Flow Analysis', 'Pull System Design',
+      ],
+    },
+    {
+      name: 'Improve', order: 3, sections: [
+        'Value Stream Mapping (Future)', '5S Implementation',
+        'Kaizen Events', 'Visual Management',
+      ],
+    },
+    {
+      name: 'Sustain', order: 4, sections: [
+        'Standard Work Documentation', 'Leader Standard Work',
+        'KPI Dashboard', 'Audit Schedule', 'Lessons Learned',
+      ],
+    },
+  ],
+  general: [
+    {
+      name: 'Initiate', order: 1, sections: [
+        'Project Charter', 'Stakeholder Analysis', 'Business Case',
+        'Scope Statement',
+      ],
+    },
+    {
+      name: 'Plan', order: 2, sections: [
+        'Project Plan', 'Risk Register', 'Resource Plan',
+        'Communication Plan',
+      ],
+    },
+    {
+      name: 'Execute', order: 3, sections: [
+        'Work Packages', 'Progress Tracking', 'Issue Log',
+        'Change Log',
+      ],
+    },
+    {
+      name: 'Monitor', order: 4, sections: [
+        'Status Reports', 'KPI Tracking', 'Milestone Review',
+      ],
+    },
+    {
+      name: 'Close', order: 5, sections: [
+        'Final Report', 'Lessons Learned', 'Project Handover',
+        'Benefits Realisation',
+      ],
+    },
+  ],
+}
 
+// ── Health / metric config ────────────────────────────────────
 const METRIC_CATEGORIES = [
   'Safety', 'Quality', 'Cost', 'Delivery', 'Customer Service',
-  'Employee Satisfaction', 'Productivity', 'Compliance', 'Environmental'
+  'Employee Satisfaction', 'Productivity', 'Compliance', 'Environmental',
 ]
 
 const METRIC_STATUS_CONFIG = {
-  tracking:  { label: 'Tracking',  color: 'bg-blue-100 text-blue-700',   icon: Activity },
-  on_target: { label: 'On Target', color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
+  tracking:  { label: 'Tracking',  color: 'bg-blue-100 text-blue-700',    icon: Activity },
+  on_target: { label: 'On Target', color: 'bg-green-100 text-green-700',  icon: CheckCircle2 },
   at_risk:   { label: 'At Risk',   color: 'bg-yellow-100 text-yellow-700', icon: AlertTriangle },
   achieved:  { label: 'Achieved',  color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
-  missed:    { label: 'Missed',    color: 'bg-red-100 text-red-700',     icon: XCircle },
+  missed:    { label: 'Missed',    color: 'bg-red-100 text-red-700',      icon: XCircle },
 }
 
 const HEALTH_CONFIG = {
@@ -36,7 +185,7 @@ const HEALTH_CONFIG = {
   red:    { label: 'Off Track', color: 'bg-red-100 text-red-700',      icon: XCircle },
 }
 
-// ââ Health Badge âââââââââââââââââââââââââââââââââââââââââââââ
+// ── Health Badge ──────────────────────────────────────────────
 function HealthBadge({ health }) {
   const cfg = HEALTH_CONFIG[health] || HEALTH_CONFIG.green
   const Icon = cfg.icon
@@ -47,7 +196,7 @@ function HealthBadge({ health }) {
   )
 }
 
-// ââ Metric Status Badge ââââââââââââââââââââââââââââââââââââââ
+// ── Metric Status Badge ───────────────────────────────────────
 function MetricStatusBadge({ status }) {
   const cfg = METRIC_STATUS_CONFIG[status] || METRIC_STATUS_CONFIG.tracking
   const Icon = cfg.icon
@@ -58,7 +207,7 @@ function MetricStatusBadge({ status }) {
   )
 }
 
-// ââ Compute project health from phase/section dates ââââââââââ
+// ── Compute health from phase/section dates ───────────────────
 function computeHealth(phaseDates, sectionDates) {
   const today = new Date().toISOString().split('T')[0]
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
@@ -81,9 +230,9 @@ function computeHealth(phaseDates, sectionDates) {
   return 'green'
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // PROJECT LIST VIEW
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 function ProjectList({ projects, loading, onSelect }) {
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-brand-orange" /></div>
@@ -123,9 +272,118 @@ function ProjectList({ projects, loading, onSelect }) {
   )
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// IMPROVEMENT METRICS SECTION
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
+// SECTION DOCUMENTS
+// ─────────────────────────────────────────────────────────────
+function SectionDocuments({ sectionId, projectId, phaseName, sectionName, userId }) {
+  const [docs, setDocs] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef()
+
+  const loadDocs = async () => {
+    const { data } = await supabase
+      .from('section_documents')
+      .select('*')
+      .eq('section_date_id', sectionId)
+      .order('created_at')
+    setDocs(data || [])
+  }
+
+  useEffect(() => { loadDocs() }, [sectionId])
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `${projectId}/${sectionId}/${Date.now()}_${safeName}`
+
+    const { error: storageErr } = await supabase.storage
+      .from('section-documents')
+      .upload(path, file, { upsert: false })
+
+    if (storageErr) {
+      console.error('Upload error:', storageErr)
+      alert('Upload failed: ' + storageErr.message)
+      setUploading(false)
+      return
+    }
+
+    await supabase.from('section_documents').insert({
+      project_id: projectId,
+      section_date_id: sectionId,
+      phase_name: phaseName,
+      section_name: sectionName,
+      file_name: file.name,
+      file_path: path,
+      file_size: file.size,
+      file_type: file.type,
+      uploaded_by: userId,
+    })
+
+    setUploading(false)
+    fileRef.current.value = ''
+    loadDocs()
+  }
+
+  const handleDelete = async (doc) => {
+    if (!confirm(`Delete "${doc.file_name}"?`)) return
+    await supabase.storage.from('section-documents').remove([doc.file_path])
+    await supabase.from('section_documents').delete().eq('id', doc.id)
+    loadDocs()
+  }
+
+  const handleDownload = async (doc) => {
+    const { data } = supabase.storage
+      .from('section-documents')
+      .getPublicUrl(doc.file_path)
+    window.open(data.publicUrl, '_blank')
+  }
+
+  const formatSize = (bytes) => {
+    if (!bytes) return ''
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-brand-charcoal flex items-center gap-1">
+          <Paperclip size={12} /> Documents {docs.length > 0 && `(${docs.length})`}
+        </span>
+        <label className="cursor-pointer text-xs text-brand-orange hover:underline flex items-center gap-1">
+          {uploading ? <Loader2 size={12} className="animate-spin" /> : <><Upload size={12} /> Upload</>}
+          <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+        </label>
+      </div>
+      {docs.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No documents uploaded yet</p>
+      ) : (
+        <div className="space-y-1">
+          {docs.map(doc => (
+            <div key={doc.id} className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg">
+              <File size={13} className="text-brand-orange flex-shrink-0" />
+              <span className="text-xs font-medium text-brand-charcoal-dark flex-1 truncate">{doc.file_name}</span>
+              {doc.file_size && <span className="text-xs text-gray-400">{formatSize(doc.file_size)}</span>}
+              <button onClick={() => handleDownload(doc)} className="p-1 text-gray-400 hover:text-brand-orange" title="Download">
+                <Download size={12} />
+              </button>
+              <button onClick={() => handleDelete(doc)} className="p-1 text-gray-400 hover:text-red-500" title="Delete">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// IMPROVEMENT METRICS
+// ─────────────────────────────────────────────────────────────
 function ImprovementMetrics({ projectId, companyId, userProfile }) {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
@@ -134,7 +392,7 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
   const [saving, setSaving] = useState(false)
   const [newMetric, setNewMetric] = useState({
     category: 'Quality', metric_name: '', unit: '%',
-    baseline_value: '', target_value: '', actual_value: '', notes: ''
+    baseline_value: '', target_value: '', actual_value: '', notes: '',
   })
 
   const loadMetrics = async () => {
@@ -153,9 +411,7 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
     if (!newMetric.metric_name.trim()) return
     setSaving(true)
     const maxOrder = metrics.length > 0 ? Math.max(...metrics.map(m => m.sort_order)) : 0
-    const baseNum = parseFloat(newMetric.baseline_value)
-    const targetNum = parseFloat(newMetric.target_value)
-    const actualNum = parseFloat(newMetric.actual_value)
+    const toNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n }
     await supabase.from('improvement_metrics').insert({
       company_id: companyId,
       project_id: projectId,
@@ -163,11 +419,11 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
       metric_name: newMetric.metric_name.trim(),
       unit: newMetric.unit.trim() || null,
       baseline_value: newMetric.baseline_value || null,
-      baseline_numeric: isNaN(baseNum) ? null : baseNum,
+      baseline_numeric: toNum(newMetric.baseline_value),
       target_value: newMetric.target_value || null,
-      target_numeric: isNaN(targetNum) ? null : targetNum,
+      target_numeric: toNum(newMetric.target_value),
       actual_value: newMetric.actual_value || null,
-      actual_numeric: isNaN(actualNum) ? null : actualNum,
+      actual_numeric: toNum(newMetric.actual_value),
       notes: newMetric.notes.trim() || null,
       sort_order: maxOrder + 1,
       created_by: userProfile.id,
@@ -196,7 +452,6 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
     loadMetrics()
   }
 
-  // Group metrics by category
   const grouped = useMemo(() => {
     const groups = {}
     metrics.forEach(m => {
@@ -300,9 +555,9 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
                     {items.map(m => (
                       <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="py-2 font-medium text-brand-charcoal-dark">{m.metric_name}</td>
-                        <td className="py-2 text-brand-charcoal">{m.unit || 'â'}</td>
-                        <td className="py-2 text-brand-charcoal">{m.baseline_value || 'â'}</td>
-                        <td className="py-2 text-brand-charcoal">{m.target_value || 'â'}</td>
+                        <td className="py-2 text-brand-charcoal">{m.unit || '—'}</td>
+                        <td className="py-2 text-brand-charcoal">{m.baseline_value || '—'}</td>
+                        <td className="py-2 text-brand-charcoal">{m.target_value || '—'}</td>
                         <td className="py-2">
                           {editingId === m.id ? (
                             <input className="input py-1 text-sm w-24" defaultValue={m.actual_value || ''}
@@ -342,44 +597,71 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
   )
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// PHASE DATES SECTION
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
+// ─────────────────────────────────────────────────────────────
+// PHASE DATES & SECTION MANAGER
+// ─────────────────────────────────────────────────────────────
+function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealthChange }) {
   const [phaseDates, setPhaseDates] = useState([])
   const [sectionDates, setSectionDates] = useState([])
   const [loading, setLoading] = useState(true)
   const [expandedPhase, setExpandedPhase] = useState(null)
+  const [expandedSection, setExpandedSection] = useState(null) // "sectionId"
   const [saving, setSaving] = useState(false)
+  const [addingSectionFor, setAddingSectionFor] = useState(null) // phase_name
+  const [newSectionName, setNewSectionName] = useState('')
+  const [stepsCache, setStepsCache] = useState({}) // sectionId -> steps text
 
-  const phases = DMAIC_PHASES // Could vary by project type later
+  // Pick template based on project type
+  const templatePhases = TEMPLATE_PHASES[projectType] || TEMPLATE_PHASES.general
 
   const loadDates = async () => {
     const [{ data: pd }, { data: sd }] = await Promise.all([
       supabase.from('project_phase_dates').select('*').eq('project_id', projectId).order('phase_order'),
-      supabase.from('project_section_dates').select('*').eq('project_id', projectId),
+      supabase.from('project_section_dates').select('*').eq('project_id', projectId).order('created_at'),
     ])
     setPhaseDates(pd || [])
     setSectionDates(sd || [])
     setLoading(false)
-
-    // Compute and report health
     const health = computeHealth(pd || [], sd || [])
     onHealthChange(health)
   }
 
   useEffect(() => { loadDates() }, [projectId])
 
-  // Initialize phase dates if none exist
+  // Initialize phases + sections from template
   const initializePhases = async () => {
     setSaving(true)
-    const rows = phases.map(p => ({
-      project_id: projectId,
-      phase_name: p.key,
-      phase_order: p.order,
-      status: 'pending',
-    }))
-    await supabase.from('project_phase_dates').insert(rows)
+    try {
+      // Insert phase rows
+      const phaseRows = templatePhases.map(p => ({
+        project_id: projectId,
+        phase_name: p.name,
+        phase_order: p.order,
+        status: 'pending',
+      }))
+      const { data: insertedPhases } = await supabase
+        .from('project_phase_dates')
+        .insert(phaseRows)
+        .select()
+
+      // Insert section rows for each phase
+      const sectionRows = []
+      for (const phase of templatePhases) {
+        for (const sectionName of phase.sections) {
+          sectionRows.push({
+            project_id: projectId,
+            phase_name: phase.name,
+            section_name: sectionName,
+            status: 'pending',
+          })
+        }
+      }
+      if (sectionRows.length > 0) {
+        await supabase.from('project_section_dates').insert(sectionRows)
+      }
+    } catch (err) {
+      console.error('Init error:', err)
+    }
     setSaving(false)
     loadDates()
   }
@@ -394,20 +676,26 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
     loadDates()
   }
 
-  const addSectionDate = async (phaseName) => {
-    const name = prompt('Section name:')
-    if (!name?.trim()) return
-    await supabase.from('project_section_dates').insert({
-      project_id: projectId,
-      phase_name: phaseName,
-      section_name: name.trim(),
-      status: 'pending',
-    })
+  const updateSectionDate = async (id, field, value) => {
+    await supabase.from('project_section_dates').update({ [field]: value || null }).eq('id', id)
     loadDates()
   }
 
-  const updateSectionDate = async (id, field, value) => {
-    await supabase.from('project_section_dates').update({ [field]: value || null }).eq('id', id)
+  const updateSectionSteps = async (id, steps) => {
+    await supabase.from('project_section_dates').update({ steps: steps || null }).eq('id', id)
+    loadDates()
+  }
+
+  const addSection = async (phaseName) => {
+    if (!newSectionName.trim()) return
+    await supabase.from('project_section_dates').insert({
+      project_id: projectId,
+      phase_name: phaseName,
+      section_name: newSectionName.trim(),
+      status: 'pending',
+    })
+    setAddingSectionFor(null)
+    setNewSectionName('')
     loadDates()
   }
 
@@ -428,10 +716,18 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-brand-orange" />
           <h3 className="font-bold text-brand-charcoal-dark">Phase Timeline</h3>
+          {phaseDates.length > 0 && (
+            <span className="text-xs bg-gray-100 text-brand-charcoal px-2 py-0.5 rounded-full capitalize">
+              {projectType || 'dmaic'}
+            </span>
+          )}
         </div>
         {phaseDates.length === 0 && (
-          <button onClick={initializePhases} className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3" disabled={saving}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Initialize Phases</>}
+          <button onClick={initializePhases}
+            className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3" disabled={saving}>
+            {saving
+              ? <Loader2 size={14} className="animate-spin" />
+              : <><Plus size={14} /> Initialize Phases</>}
           </button>
         )}
       </div>
@@ -439,7 +735,11 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
       {phaseDates.length === 0 ? (
         <div className="text-center py-8 text-brand-charcoal">
           <Calendar size={28} className="text-gray-300 mx-auto mb-2" />
-          <p className="text-sm">Click "Initialize Phases" to set up the DMAIC timeline for this project.</p>
+          <p className="text-sm">
+            Click "Initialize Phases" to load the{' '}
+            <span className="font-semibold capitalize">{projectType || 'DMAIC'}</span>{' '}
+            template phases and sections for this project.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -449,16 +749,23 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
             const isOverdue = ['pending', 'in_progress'].includes(pd.status) && pd.target_end_date && pd.target_end_date < today
             const isNearDue = !isOverdue && ['pending', 'in_progress'].includes(pd.status) && pd.target_end_date &&
               pd.target_end_date < new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+            const completedSections = sections.filter(s => s.status === 'completed').length
 
             return (
               <div key={pd.id} className={`border rounded-xl overflow-hidden ${isOverdue ? 'border-red-300 bg-red-50/30' : isNearDue ? 'border-yellow-300 bg-yellow-50/30' : 'border-gray-200'}`}>
+
+                {/* Phase header row */}
                 <button onClick={() => setExpandedPhase(isExpanded ? null : pd.phase_name)}
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-50/50 transition-colors">
                   {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  <span className="font-semibold text-brand-charcoal-dark capitalize flex-1 text-left">{pd.phase_name}</span>
+                  <span className="font-semibold text-brand-charcoal-dark flex-1 text-left">{pd.phase_name}</span>
+                  {sections.length > 0 && (
+                    <span className="text-xs text-gray-500">{completedSections}/{sections.length} sections</span>
+                  )}
                   {isOverdue && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><AlertTriangle size={12} /> Overdue</span>}
                   {isNearDue && <span className="text-xs text-yellow-600 font-medium flex items-center gap-1"><Clock size={12} /> Due Soon</span>}
-                  <select className="text-xs bg-white border border-gray-200 rounded px-2 py-1" value={pd.status}
+                  <select className="text-xs bg-white border border-gray-200 rounded px-2 py-1"
+                    value={pd.status}
                     onClick={e => e.stopPropagation()}
                     onChange={e => { e.stopPropagation(); updatePhaseStatus(pd.id, e.target.value) }}>
                     <option value="pending">Pending</option>
@@ -469,8 +776,11 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
                   {pd.status === 'completed' && <CheckCircle2 size={16} className="text-green-500" />}
                 </button>
 
+                {/* Phase expanded content */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 space-y-3">
+                  <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
+
+                    {/* Phase date fields */}
                     <div className="grid grid-cols-4 gap-3">
                       <div>
                         <label className="label text-xs">Target Start</label>
@@ -494,36 +804,103 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
                       </div>
                     </div>
 
-                    {/* Section dates within phase */}
+                    {/* Sections list */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-brand-charcoal">Sections</span>
-                        <button onClick={() => addSectionDate(pd.phase_name)}
+                        <span className="text-xs font-semibold text-brand-charcoal uppercase tracking-wider">Sections</span>
+                        <button
+                          onClick={() => { setAddingSectionFor(pd.phase_name); setNewSectionName('') }}
                           className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                           <Plus size={12} /> Add Section
                         </button>
                       </div>
+
+                      {/* Add section inline form */}
+                      {addingSectionFor === pd.phase_name && (
+                        <div className="flex gap-2 mb-2">
+                          <input
+                            className="input py-1.5 text-sm flex-1"
+                            placeholder="Section name"
+                            value={newSectionName}
+                            onChange={e => setNewSectionName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') addSection(pd.phase_name); if (e.key === 'Escape') setAddingSectionFor(null) }}
+                            autoFocus />
+                          <button onClick={() => addSection(pd.phase_name)}
+                            className="btn-primary py-1.5 px-3 text-sm">Add</button>
+                          <button onClick={() => setAddingSectionFor(null)}
+                            className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
+                        </div>
+                      )}
+
                       {sections.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">No sections defined</p>
                       ) : (
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {sections.map(s => {
                             const sOverdue = ['pending', 'in_progress'].includes(s.status) && s.target_date && s.target_date < today
+                            const sExpanded = expandedSection === s.id
+                            const stepsValue = stepsCache[s.id] !== undefined ? stepsCache[s.id] : (s.steps || '')
+
                             return (
-                              <div key={s.id} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${sOverdue ? 'bg-red-50' : 'bg-gray-50'}`}>
-                                <span className="flex-1 font-medium text-brand-charcoal-dark">{s.section_name}</span>
-                                <input type="date" className="input py-1 text-xs w-36" value={s.target_date || ''}
-                                  onChange={e => updateSectionDate(s.id, 'target_date', e.target.value)} />
-                                <select className="text-xs bg-white border border-gray-200 rounded px-1.5 py-1" value={s.status}
-                                  onChange={e => updateSectionDate(s.id, 'status', e.target.value)}>
-                                  <option value="pending">Pending</option>
-                                  <option value="in_progress">In Progress</option>
-                                  <option value="completed">Completed</option>
-                                </select>
-                                {sOverdue && <AlertTriangle size={12} className="text-red-500" />}
-                                <button onClick={() => deleteSectionDate(s.id)} className="p-1 text-gray-400 hover:text-red-500">
-                                  <Trash2 size={12} />
-                                </button>
+                              <div key={s.id} className={`rounded-xl border ${sOverdue ? 'border-red-200 bg-red-50/40' : s.status === 'completed' ? 'border-green-200 bg-green-50/20' : 'border-gray-200 bg-gray-50/40'}`}>
+                                {/* Section header row */}
+                                <div className="flex items-center gap-2 p-2.5">
+                                  <button
+                                    onClick={() => setExpandedSection(sExpanded ? null : s.id)}
+                                    className="flex items-center gap-1.5 flex-1 text-left min-w-0">
+                                    {sExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+                                    <span className={`text-sm font-medium truncate ${s.status === 'completed' ? 'line-through text-gray-400' : 'text-brand-charcoal-dark'}`}>
+                                      {s.section_name}
+                                    </span>
+                                    {s.steps && <FileText size={12} className="text-brand-orange flex-shrink-0" title="Has steps" />}
+                                    {sOverdue && <AlertTriangle size={12} className="text-red-500 flex-shrink-0" />}
+                                  </button>
+                                  <input type="date" className="input py-1 text-xs w-34"
+                                    value={s.target_date || ''}
+                                    onChange={e => updateSectionDate(s.id, 'target_date', e.target.value)} />
+                                  <select className="text-xs bg-white border border-gray-200 rounded px-1.5 py-1 flex-shrink-0"
+                                    value={s.status}
+                                    onChange={e => updateSectionDate(s.id, 'status', e.target.value)}>
+                                    <option value="pending">Pending</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                  </select>
+                                  <button onClick={() => deleteSectionDate(s.id)}
+                                    className="p-1 text-gray-400 hover:text-red-500 flex-shrink-0">
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+
+                                {/* Section expanded body: steps + documents */}
+                                {sExpanded && (
+                                  <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-3">
+
+                                    {/* Steps textarea */}
+                                    <div>
+                                      <label className="label text-xs flex items-center gap-1 mb-1">
+                                        <FileText size={12} /> Steps to Complete This Section
+                                      </label>
+                                      <textarea
+                                        className="input text-sm w-full resize-none"
+                                        rows={4}
+                                        placeholder="Describe the steps involved in completing this section, key activities, tools to use, acceptance criteria, etc."
+                                        value={stepsValue}
+                                        onChange={e => setStepsCache(prev => ({ ...prev, [s.id]: e.target.value }))}
+                                        onBlur={e => updateSectionSteps(s.id, e.target.value)}
+                                      />
+                                      <p className="text-xs text-gray-400 mt-1">Auto-saved when you click away</p>
+                                    </div>
+
+                                    {/* Documents */}
+                                    <SectionDocuments
+                                      sectionId={s.id}
+                                      projectId={projectId}
+                                      phaseName={s.phase_name}
+                                      sectionName={s.section_name}
+                                      userId={userId}
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )
                           })}
@@ -541,37 +918,31 @@ function PhaseDatesManager({ projectId, projectType, onHealthChange }) {
   )
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // PROJECT BENEFITS DISPLAY
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 function ProjectBenefits({ projectId }) {
   const [benefits, setBenefits] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.from('project_benefits')
-      .select('*')
-      .or(`project_id.eq.${projectId},intake_id.in.(select intake_id from projects where id = '${projectId}')`)
-      .then(({ data }) => { setBenefits(data || []); setLoading(false) })
-  }, [projectId])
-
-  // Also try loading via the intake_id on the project
-  useEffect(() => {
-    const loadFromIntake = async () => {
+    const load = async () => {
       const { data: proj } = await supabase.from('projects').select('intake_id').eq('id', projectId).single()
+      const queries = [supabase.from('project_benefits').select('*').eq('project_id', projectId)]
       if (proj?.intake_id) {
-        const { data } = await supabase.from('project_benefits').select('*').eq('intake_id', proj.intake_id)
-        if (data?.length) setBenefits(prev => {
-          const existingIds = new Set(prev.map(b => b.id))
-          return [...prev, ...data.filter(b => !existingIds.has(b.id))]
-        })
+        queries.push(supabase.from('project_benefits').select('*').eq('intake_id', proj.intake_id))
       }
+      const results = await Promise.all(queries)
+      const seen = new Set()
+      const merged = []
+      results.forEach(r => (r.data || []).forEach(b => { if (!seen.has(b.id)) { seen.add(b.id); merged.push(b) } }))
+      setBenefits(merged)
+      setLoading(false)
     }
-    loadFromIntake()
+    load()
   }, [projectId])
 
-  if (loading) return null
-  if (benefits.length === 0) return null
+  if (loading || benefits.length === 0) return null
 
   return (
     <div className="card">
@@ -583,7 +954,7 @@ function ProjectBenefits({ projectId }) {
         {benefits.map(b => (
           <div key={b.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
             <span className="text-sm font-medium text-brand-charcoal-dark">{b.category_name}</span>
-            <span className="text-sm font-bold text-brand-orange">{b.estimated_value || 'â'}</span>
+            <span className="text-sm font-bold text-brand-orange">{b.estimated_value || '—'}</span>
           </div>
         ))}
       </div>
@@ -591,13 +962,12 @@ function ProjectBenefits({ projectId }) {
   )
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // PROJECT DETAIL VIEW
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 function ProjectDetail({ project, userProfile, onBack }) {
   const [health, setHealth] = useState(project.health || 'green')
 
-  // Update project health in DB when computed health changes
   const handleHealthChange = async (newHealth) => {
     setHealth(newHealth)
     if (newHealth !== project.health) {
@@ -618,7 +988,7 @@ function ProjectDetail({ project, userProfile, onBack }) {
             <HealthBadge health={health} />
           </div>
           <div className="flex items-center gap-4 text-sm text-brand-charcoal mt-1">
-            <span className="capitalize">{project.type || 'DMAIC'}</span>
+            <span className="capitalize font-medium">{project.type || 'DMAIC'}</span>
             <span className="capitalize">Phase: {project.phase || 'Define'}</span>
             <span>Status: {project.status}</span>
             {project.project_lead && <span>Lead: {project.project_lead.full_name}</span>}
@@ -637,10 +1007,12 @@ function ProjectDetail({ project, userProfile, onBack }) {
       {/* Benefits from intake */}
       <ProjectBenefits projectId={project.id} />
 
-      {/* Phase Timeline */}
+      {/* Phase Timeline with full section support */}
       <PhaseDatesManager
         projectId={project.id}
-        projectType={project.type}
+        projectType={project.type || 'general'}
+        companyId={userProfile.company_id}
+        userId={userProfile.id}
         onHealthChange={handleHealthChange}
       />
 
@@ -654,9 +1026,9 @@ function ProjectDetail({ project, userProfile, onBack }) {
   )
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 // MAIN WORKSPACE PAGE
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────
 export default function Workspace() {
   const { user } = useAuth()
   const [userProfile, setUserProfile] = useState(null)
