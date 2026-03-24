@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   BarChart3, Inbox, Activity, TrendingUp, AlertTriangle, CheckCircle2, Clock,
-  Loader2, AlertCircle, Users, DollarSign, X, ChevronDown, Calendar
+  Loader2, AlertCircle, Users, DollarSign, X, ChevronDown, Calendar, ExternalLink
 } from 'lucide-react'
 
 const healthBadge = { green: 'badge-green', yellow: 'badge-yellow', red: 'badge-red' }
@@ -11,7 +12,7 @@ const healthLabel = { green: 'On Track', yellow: 'At Risk', red: 'Off Track' }
 const phaseLabel = { define: 'Define', measure: 'Measure', analyze: 'Analyze', improve: 'Improve', control: 'Control', closed: 'Closed' }
 
 // ─── Drill-Down Modal ─────────────────────────────────────────────────────────
-function DrillDownModal({ title, projects, onClose }) {
+function DrillDownModal({ title, projects, onClose, onNavigateToProject }) {
   if (!projects) return null
 
   return (
@@ -41,12 +42,20 @@ function DrillDownModal({ title, projects, onClose }) {
                     <th className="text-left px-4 py-3">Health</th>
                     <th className="text-left px-4 py-3">Department</th>
                     <th className="text-right px-4 py-3">Estimated Savings</th>
+                    <th className="text-center px-4 py-3">Workspace</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {projects.map((p) => (
                     <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-brand-charcoal-dark">{p.name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <button
+                          onClick={() => onNavigateToProject(p.id)}
+                          className="text-brand-orange hover:text-brand-orange-dark hover:underline text-left font-medium"
+                        >
+                          {p.name}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-brand-charcoal capitalize">{p.type || '—'}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs font-medium bg-surface-secondary px-2.5 py-1 rounded-full text-brand-charcoal">
@@ -64,6 +73,15 @@ function DrillDownModal({ title, projects, onClose }) {
                       <td className="px-4 py-3 text-right text-brand-charcoal">
                         ${(p.estimated_savings || 0).toLocaleString()}
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => onNavigateToProject(p.id)}
+                          className="inline-flex items-center gap-1 text-xs text-brand-orange hover:text-brand-orange-dark font-medium"
+                        >
+                          <ExternalLink size={14} />
+                          Open
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -79,7 +97,14 @@ function DrillDownModal({ title, projects, onClose }) {
 // ─── Main Dashboard Component ─────────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const name = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
+
+  // Navigate to workspace with project pre-selected
+  const handleNavigateToProject = (projectId) => {
+    setDrillDownData(null) // Close modal if open
+    navigate(`/workspace?project=${projectId}`)
+  }
 
   const [userProfile, setUserProfile] = useState(null)
   const [projects, setProjects] = useState([])
@@ -687,8 +712,14 @@ export default function Dashboard() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {recentProjects.map((p) => (
-                  <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium text-brand-charcoal-dark truncate">{p.name}</td>
+                  <tr
+                    key={p.id}
+                    onClick={() => handleNavigateToProject(p.id)}
+                    className="hover:bg-surface-secondary/50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-brand-orange hover:text-brand-orange-dark truncate">
+                      {p.name}
+                    </td>
                     <td className="px-6 py-4">
                       <span className="text-xs font-medium bg-surface-secondary px-2.5 py-1 rounded-full text-brand-charcoal">
                         {phaseLabel[p.phase] || p.phase}
@@ -722,6 +753,7 @@ export default function Dashboard() {
           title={drillDownTitle}
           projects={drillDownData}
           onClose={() => setDrillDownData(null)}
+          onNavigateToProject={handleNavigateToProject}
         />
       )}
     </div>
