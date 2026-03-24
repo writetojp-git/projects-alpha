@@ -663,6 +663,7 @@ setLoading(false)
 
               {/* ── Active Projects ── */}
               {tab === 'active' && (
+              <>
         {/* Benefits Summary */}
         {Object.keys(projectBenefits).length > 0 && (
           <div className="card mb-6">
@@ -768,6 +769,7 @@ setLoading(false)
                     </div>
                   )}
                 </div>
+              </>
               )}
             </>
           )}
