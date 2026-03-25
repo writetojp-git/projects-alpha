@@ -112,14 +112,19 @@ export default function SubmitRequestModal({ onClose, onSuccess, userProfile }) 
     expected_benefit: '',
     department: '',
     project_type: 'dmaic',
+    site_id: userProfile.site_id || '',
   })
   const [benefits, setBenefits] = useState([])
   const [categories, setCategories] = useState([])
+  const [sites, setSites] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Load benefit categories
+  // Load benefit categories + sites
   useEffect(() => {
+    supabase.from('sites').select('id, name, code').eq('company_id', userProfile.company_id).eq('is_active', true).order('name')
+      .then(({ data }) => setSites(data || []))
+
     supabase
       .from('benefit_categories')
       .select('*')
@@ -172,6 +177,7 @@ export default function SubmitRequestModal({ onClose, onSuccess, userProfile }) 
         estimated_savings: totalSavings > 0 ? totalSavings : null,
         department: form.department.trim() || null,
         project_type: form.project_type,
+        site_id: form.site_id || null,
         company_id: userProfile.company_id,
         requested_by: userProfile.id,
         status: 'submitted',
@@ -271,6 +277,15 @@ export default function SubmitRequestModal({ onClose, onSuccess, userProfile }) 
                 onChange={e => update('department', e.target.value)}
               />
             </div>
+            {sites.length > 0 && (
+              <div>
+                <label className="label">Site / Location</label>
+                <select className="input" value={form.site_id} onChange={e => update('site_id', e.target.value)}>
+                  <option value="">— Select site —</option>
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Problem Statement */}

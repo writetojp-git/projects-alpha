@@ -9,7 +9,7 @@ import {
 import {
   BarChart3, Activity, TrendingUp, AlertTriangle, CheckCircle2, Clock,
   Loader2, AlertCircle, Users, DollarSign, X, Calendar, ExternalLink,
-  Target, Settings2, ChevronRight, Inbox, Eye, EyeOff, GripVertical
+  Target, Settings2, ChevronRight, Inbox, Eye, EyeOff, GripVertical, MapPin
 } from 'lucide-react'
 
 // ── Brand colors ──────────────────────────────────────────────
@@ -44,6 +44,7 @@ const DEFAULT_WIDGETS = {
   benefitsBreakdown: { label: 'Benefits Breakdown',        visible: true,  size: 'half' },
   completedVsPlan:   { label: 'Completion Rate by Dept',   visible: true,  size: 'half' },
   metricsStatus:     { label: 'Improvement Metrics',       visible: true,  size: 'half' },
+  projectsBySite:    { label: 'Projects by Site',          visible: true,  size: 'full' },
   recentProjects:    { label: 'Projects at Risk / Recent', visible: true,  size: 'full' },
   recentActivity:    { label: 'Recent Activity',           visible: true,  size: 'half' },
 }
@@ -722,6 +723,52 @@ function RecentActivityWidget({ logs }) {
   )
 }
 
+// ── Projects by Site Widget ───────────────────────────────────
+function ProjectsBySiteWidget({ projects, sites, onDrillDown }) {
+  if (!sites.length) return null
+
+  const siteMap = Object.fromEntries(sites.map(s => [s.id, s]))
+  const data = sites
+    .map((site, i) => {
+      const siteProjects = projects.filter(p => p.site_id === site.id)
+      const active    = siteProjects.filter(p => p.status === 'active').length
+      const completed = siteProjects.filter(p => p.status === 'completed').length
+      const atRisk    = siteProjects.filter(p => ['yellow','red'].includes(p.health)).length
+      return { site: site.code || site.name, fullName: site.name, siteId: site.id, active, completed, atRisk, fill: CHART_PALETTE[i % CHART_PALETTE.length] }
+    })
+    .filter(d => d.active + d.completed > 0)
+    .sort((a, b) => (b.active + b.completed) - (a.active + a.completed))
+
+  const unassigned = projects.filter(p => !p.site_id)
+  if (unassigned.length) {
+    data.push({ site: 'Unassigned', fullName: 'Unassigned', siteId: null, active: unassigned.filter(p => p.status === 'active').length, completed: unassigned.filter(p => p.status === 'completed').length, atRisk: 0, fill: '#d1d5db' })
+  }
+
+  if (!data.length) return null
+
+  return (
+    <Widget title="Projects by Site / Location" icon={MapPin}
+      subtitle="Active and completed projects across all sites — click to drill down"
+      className="col-span-2">
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data} margin={{ left: 8, right: 24, top: 4, bottom: 40 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+          <XAxis dataKey="site" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+          <Tooltip content={<ChartTooltip />} />
+          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          <Bar dataKey="active" name="Active" stackId="a" radius={[0,0,0,0]} maxBarSize={48}
+            fill={COLORS.orange}
+            onClick={(d) => onDrillDown(`Site: ${d.fullName} — Active`, projects.filter(p => p.site_id === d.siteId && p.status === 'active'))} />
+          <Bar dataKey="completed" name="Completed" stackId="a" radius={[6,6,0,0]} maxBarSize={48}
+            fill={COLORS.green}
+            onClick={(d) => onDrillDown(`Site: ${d.fullName} — Completed`, projects.filter(p => p.site_id === d.siteId && p.status === 'completed'))} />
+        </BarChart>
+      </ResponsiveContainer>
+    </Widget>
+  )
+}
+
 // ── Main Dashboard ────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
@@ -732,12 +779,14 @@ export default function Dashboard() {
   const [projects, setProjects]       = useState([])
   const [intakeRequests, setIntakeRequests] = useState([])
   const [activityLogs, setActivityLogs]     = useState([])
+  const [sites, setSites]                   = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
 
   const [timePeriod, setTimePeriod]       = useState('this-year')
   const [customStart, setCustomStart]     = useState('')
   const [customEnd, setCustomEnd]         = useState('')
+  const [selectedSite, setSelectedSite]   = useState('all')
   const [drillDownData, setDrillDownData] = useState(null)
   const [drillTitle, setDrillTitle]       = useState('')
   const [showConfig, setShowConfig]       = useState(false)
@@ -772,7 +821,7 @@ export default function Dashboard() {
     if (!userProfile?.company_id) return
     const load = async () => {
       try {
-        const [{ data: projData }, { data: intakeData }, { data: actData }] = await Promise.all([
+        const [{ data: projData }, { data: intakeData }, { data: actData }, { data: siteData }] = await Promise.all([
           supabase.from('projects')
             .select('*, lead_profile:profiles!project_lead_id(department)')
             .eq('company_id', userProfile.company_id)
@@ -782,10 +831,13 @@ export default function Dashboard() {
           supabase.from('activity_logs').select('*')
             .eq('company_id', userProfile.company_id)
             .order('created_at', { ascending: false }).limit(8),
+          supabase.from('sites').select('*')
+            .eq('company_id', userProfile.company_id).eq('is_active', true).order('name'),
         ])
         setProjects((projData || []).map(p => ({ ...p, department: p.lead_profile?.department || 'Unassigned' })))
         setIntakeRequests(intakeData || [])
         setActivityLogs(actData || [])
+        setSites(siteData || [])
         setLoading(false)
       } catch (e) { setError(e.message); setLoading(false) }
     }
@@ -803,6 +855,12 @@ export default function Dashboard() {
 
   // ── Filtered projects ──
   const filtered = projects.filter(p => {
+    // Site filter
+    if (selectedSite !== 'all') {
+      if (selectedSite === 'unassigned') { if (p.site_id) return false }
+      else if (p.site_id !== selectedSite) return false
+    }
+    // Time filter
     if (!p.target_date) return true
     const d = new Date(p.target_date)
     const now = new Date()
@@ -853,6 +911,17 @@ export default function Dashboard() {
               <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="outline-none text-sm text-brand-charcoal-dark" />
               <span className="text-gray-300">→</span>
               <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="outline-none text-sm text-brand-charcoal-dark" />
+            </div>
+          )}
+          {/* Site filter */}
+          {sites.length > 0 && (
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm">
+              <MapPin size={15} className="text-brand-orange" />
+              <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="bg-transparent outline-none text-brand-charcoal-dark font-medium cursor-pointer">
+                <option value="all">All Sites</option>
+                {sites.map(s => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
+                <option value="unassigned">Unassigned</option>
+              </select>
             </div>
           )}
           {/* Configure */}
@@ -946,6 +1015,10 @@ export default function Dashboard() {
       <div className="space-y-5">
         {show('projectsByDept') && (
           <ProjectsByDeptWidget projects={filtered} onDrillDown={drillDown} />
+        )}
+
+        {show('projectsBySite') && sites.length > 0 && (
+          <ProjectsBySiteWidget projects={filtered} sites={sites} onDrillDown={drillDown} />
         )}
 
         {show('recentProjects') && (
