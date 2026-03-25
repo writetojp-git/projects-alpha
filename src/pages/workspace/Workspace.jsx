@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -600,7 +601,7 @@ function ImprovementMetrics({ projectId, companyId, userProfile }) {
 // ─────────────────────────────────────────────────────────────
 // PHASE DATES & SECTION MANAGER
 // ─────────────────────────────────────────────────────────────
-function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealthChange }) {
+function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealthChange, onCompletionChange }) {
   const [phaseDates, setPhaseDates] = useState([])
   const [sectionDates, setSectionDates] = useState([])
   const [loading, setLoading] = useState(true)
@@ -630,6 +631,16 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
     setLoading(false)
     const health = computeHealth(pd || [], sd || [])
     onHealthChange(health)
+
+    // Report completion stats
+    const totalSections = (sd || []).length
+    const completedSections = (sd || []).filter(s => s.status === 'completed').length
+    onCompletionChange?.({ completed: completedSections, total: totalSections })
+
+    // Auto-complete project when all phases are done
+    if ((pd || []).length > 0 && (pd || []).every(p => p.status === 'completed')) {
+      await supabase.from('projects').update({ status: 'completed' }).eq('id', projectId)
+    }
   }
 
   useEffect(() => { loadDates() }, [projectId])
@@ -737,13 +748,15 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
           updates.actual_start_date = todayStr
         }
 
-        // Set actual_end when ALL sections in the phase are completed
+        // Set actual_end + auto-complete phase when ALL sections in the phase are completed
         const allDone = newStatus === 'completed' && otherSections.every(s => s.status === 'completed')
         if (allDone) {
           updates.actual_end_date = todayStr
+          updates.status = 'completed'
         } else if (newStatus !== 'completed' && phase.actual_end_date) {
-          // Clear actual_end if a section was un-completed
+          // Clear actual_end and revert phase if a section was un-completed
           updates.actual_end_date = null
+          updates.status = 'in_progress'
         }
 
         if (Object.keys(updates).length > 0) {
@@ -1240,6 +1253,7 @@ function ProjectBenefits({ projectId }) {
 // ─────────────────────────────────────────────────────────────
 function ProjectDetail({ project, userProfile }) {
   const [health, setHealth] = useState(project.health || 'green')
+  const [completion, setCompletion] = useState({ completed: 0, total: 0 })
 
   const handleHealthChange = async (newHealth) => {
     setHealth(newHealth)
@@ -1248,13 +1262,21 @@ function ProjectDetail({ project, userProfile }) {
     }
   }
 
+  const pct = completion.total > 0 ? Math.round((completion.completed / completion.total) * 100) : 0
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-3 mb-1 flex-wrap">
           <h1 className="text-2xl font-bold text-brand-charcoal-dark">{project.name}</h1>
           <HealthBadge health={health} />
+          {completion.total > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+              <CheckCircle2 size={11} />
+              {pct}% complete ({completion.completed}/{completion.total} sections)
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4 text-sm text-brand-charcoal">
           <span className="capitalize font-medium">{project.type || 'DMAIC'}</span>
@@ -1282,6 +1304,7 @@ function ProjectDetail({ project, userProfile }) {
         companyId={userProfile.company_id}
         userId={userProfile.id}
         onHealthChange={handleHealthChange}
+        onCompletionChange={setCompletion}
       />
 
       {/* Improvement Metrics */}
@@ -1299,6 +1322,7 @@ function ProjectDetail({ project, userProfile }) {
 // ─────────────────────────────────────────────────────────────
 export default function Workspace() {
   const { user } = useAuth()
+  const location = useLocation()
   const [userProfile, setUserProfile] = useState(null)
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1317,10 +1341,18 @@ export default function Workspace() {
         .from('projects')
         .select('*, project_lead:profiles!projects_project_lead_id_fkey(id, full_name)')
         .eq('company_id', userProfile.company_id)
-        .in('status', ['active', 'on_hold'])
+        .in('status', ['active', 'on_hold', 'completed'])
         .order('created_at', { ascending: false })
-      setProjects(data || [])
+      const list = data || []
+      setProjects(list)
       setLoading(false)
+      // Auto-select from URL param e.g. /workspace?project=<id>
+      const params = new URLSearchParams(location.search)
+      const pid = params.get('project')
+      if (pid) {
+        const match = list.find(p => p.id === pid)
+        if (match) setSelectedProject(match)
+      }
     }
     loadProjects()
   }, [userProfile])
