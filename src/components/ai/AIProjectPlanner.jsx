@@ -1,9 +1,93 @@
 import { useState } from 'react'
-import { X, Sparkles, Loader2, CheckCircle2, Plus, RotateCcw } from 'lucide-react'
+import { X, Sparkles, Loader2, CheckCircle2, Plus, RotateCcw, ChevronDown, ChevronRight, Users } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
 const PROJECT_TYPES = ['dmaic', 'dmadv', 'kaizen', 'lean', 'general']
+
+// Phase color palette
+const PHASE_COLORS = [
+  'bg-blue-500',
+  'bg-brand-orange',
+  'bg-purple-500',
+  'bg-green-500',
+  'bg-yellow-500',
+]
+
+function TimelineSection({ phases, totalWeeks, teamSize }) {
+  const [expandedPhase, setExpandedPhase] = useState(null)
+  const totalPhaseDuration = phases.reduce((sum, p) => sum + (p.duration_weeks || 0), 0) || 1
+
+  return (
+    <div className="border border-gray-100 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-brand-charcoal-dark">
+          Estimated Project Timeline
+          {totalWeeks && <span className="text-brand-orange ml-1">— {totalWeeks} weeks total</span>}
+        </p>
+        {teamSize && (
+          <div className="flex items-center gap-1 text-xs text-brand-charcoal bg-surface-secondary px-2 py-1 rounded-full">
+            <Users size={11} />
+            {teamSize} people recommended
+          </div>
+        )}
+      </div>
+
+      {/* Timeline bar */}
+      <div className="flex rounded-full overflow-hidden h-6 gap-px">
+        {phases.map((phase, i) => {
+          const widthPct = Math.round((phase.duration_weeks / totalPhaseDuration) * 100)
+          return (
+            <button
+              key={i}
+              onClick={() => setExpandedPhase(expandedPhase === i ? null : i)}
+              style={{ width: `${widthPct}%` }}
+              className={`${PHASE_COLORS[i % PHASE_COLORS.length]} flex items-center justify-center min-w-[32px] hover:opacity-90 transition-opacity`}
+              title={`${phase.name} — ${phase.duration_weeks}w`}
+            >
+              <span className="text-white text-[9px] font-bold truncate px-1 leading-none">
+                {phase.name}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Phase labels row */}
+      <div className="flex gap-2 flex-wrap">
+        {phases.map((phase, i) => (
+          <button
+            key={i}
+            onClick={() => setExpandedPhase(expandedPhase === i ? null : i)}
+            className="flex items-center gap-1 text-xs text-brand-charcoal hover:text-brand-charcoal-dark transition-colors"
+          >
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${PHASE_COLORS[i % PHASE_COLORS.length]}`} />
+            <span>{phase.name}</span>
+            <span className="text-gray-400">{phase.duration_weeks}w</span>
+            {expandedPhase === i ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          </button>
+        ))}
+      </div>
+
+      {/* Expanded phase tasks */}
+      {expandedPhase !== null && phases[expandedPhase] && (
+        <div className="bg-surface-secondary rounded-lg p-3">
+          <p className="text-xs font-semibold text-brand-charcoal-dark mb-2">
+            {phases[expandedPhase].name} — Key Tasks
+          </p>
+          <ul className="space-y-1">
+            {(phases[expandedPhase].key_tasks || []).map((task, j) => (
+              <li key={j} className="text-xs text-brand-charcoal flex items-start gap-1.5">
+                <span className="text-brand-orange mt-0.5">•</span>
+                {task}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AIProjectPlanner({ onClose, userProfile }) {
   const navigate = useNavigate()
@@ -207,6 +291,15 @@ export default function AIProjectPlanner({ onClose, userProfile }) {
                   <p className="text-xs font-semibold text-brand-orange mb-0.5">Estimated Value</p>
                   <p className="text-sm text-brand-charcoal-dark">{editPlan.estimated_savings}</p>
                 </div>
+              )}
+
+              {/* Timeline section — v2 */}
+              {editPlan.phases && editPlan.phases.length > 0 && (
+                <TimelineSection
+                  phases={editPlan.phases}
+                  totalWeeks={editPlan.total_timeline_weeks}
+                  teamSize={editPlan.recommended_team_size}
+                />
               )}
 
               {error && (

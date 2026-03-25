@@ -12,9 +12,11 @@ import Dashboard from './pages/dashboard/Dashboard'
 import Portfolio from './pages/portfolio/Portfolio'
 import Intake from './pages/intake/Intake'
 import Workspace from './pages/workspace/Workspace'
+import Charter from './pages/charter/Charter'
 import Execution from './pages/execution/Execution'
 import Templates from './pages/templates/Templates'
 import Activity from './pages/activity/Activity'
+import Billing from './pages/billing/Billing'
 import Settings from './pages/settings/Settings'
 
 export default function App() {
@@ -33,9 +35,11 @@ export default function App() {
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/intake" element={<Intake />} />
             <Route path="/workspace" element={<Workspace />} />
+            <Route path="/charter" element={<Charter />} />
             <Route path="/execution" element={<Execution />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/activity" element={<Activity />} />
+            <Route path="/billing" element={<Billing />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
 

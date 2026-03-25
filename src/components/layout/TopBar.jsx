@@ -1,19 +1,22 @@
-import { Bell, Search, Plus, Sparkles } from 'lucide-react'
+import { Search, Plus, Sparkles } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import SubmitRequestModal from '../ui/SubmitRequestModal'
 import AIProjectPlanner from '../ai/AIProjectPlanner'
+import NotificationsPanel from '../ui/NotificationsPanel'
 
 const pageTitles = {
   '/dashboard': 'Dashboard',
   '/portfolio': 'Portfolio',
   '/intake': 'Intake Queue',
   '/workspace': 'Workspace',
+  '/charter': 'Project Charter',
   '/execution': 'Execution',
   '/templates': 'Templates',
   '/activity': 'Activity Feed',
+  '/billing': 'Billing & Plan',
   '/settings': 'Settings',
 }
 
@@ -77,10 +80,7 @@ export default function TopBar() {
         </button>
 
         {/* Notifications */}
-        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-secondary transition-colors text-brand-charcoal">
-          <Bell size={18} />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-brand-orange rounded-full"></span>
-        </button>
+        <NotificationsPanel userId={user?.id} companyId={userProfile?.company_id} />
       </div>
 
       {/* Shared Submit Request Modal — same one used in Intake Queue */}

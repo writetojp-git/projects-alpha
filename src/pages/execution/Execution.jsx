@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext'
 import {
   Plus, X, AlertCircle, ChevronDown, Calendar, Flag,
   CheckCircle2, Circle, Clock, AlertTriangle, Loader2,
-  GripVertical, Edit2, Trash2, User
+  GripVertical, Edit2, Trash2, User, MessageSquare,
+  ShieldAlert, Send, CheckCheck
 } from 'lucide-react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -24,8 +25,359 @@ const PRIORITIES = [
 
 const PHASES = ['define', 'measure', 'analyze', 'improve', 'control']
 
+function timeAgo(dateStr) {
+  if (!dateStr) return ''
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diff = Math.floor((now - date) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+// ─── Task Detail Modal ────────────────────────────────────────────────────────
+function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved }) {
+  const [activeTab, setActiveTab] = useState('comments')
+  const [form, setForm] = useState({
+    title: task?.title || '',
+    description: task?.description || '',
+    status: task?.status || 'todo',
+    priority: task?.priority || 'medium',
+    phase: task?.phase || '',
+    due_date: task?.due_date || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  // Comments
+  const [comments, setComments] = useState([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [postingComment, setPostingComment] = useState(false)
+
+  // Blockers
+  const [blockers, setBlockers] = useState([])
+  const [blockersLoading, setBlockersLoading] = useState(false)
+  const [blockerText, setBlockerText] = useState('')
+  const [loggingBlocker, setLoggingBlocker] = useState(false)
+
+  // Load comments
+  const fetchComments = useCallback(async () => {
+    if (!task?.id) return
+    setCommentsLoading(true)
+    const { data } = await supabase
+      .from('task_comments')
+      .select('*, profiles(full_name)')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: true })
+    setComments(data || [])
+    setCommentsLoading(false)
+  }, [task?.id])
+
+  // Load blockers
+  const fetchBlockers = useCallback(async () => {
+    if (!task?.id) return
+    setBlockersLoading(true)
+    const { data } = await supabase
+      .from('task_blockers')
+      .select('*, profiles(full_name)')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: false })
+    setBlockers(data || [])
+    setBlockersLoading(false)
+  }, [task?.id])
+
+  useEffect(() => {
+    fetchComments()
+    fetchBlockers()
+  }, [fetchComments, fetchBlockers])
+
+  const handleSave = async () => {
+    if (!form.title.trim()) { setSaveError('Task title is required'); return }
+    setSaving(true)
+    setSaveError('')
+    const { error } = await supabase.from('tasks').update({
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      status: form.status,
+      priority: form.priority,
+      phase: form.phase || null,
+      due_date: form.due_date || null,
+      updated_by: userId,
+    }).eq('id', task.id)
+    if (error) { setSaveError(error.message); setSaving(false) }
+    else onSaved()
+  }
+
+  const handlePostComment = async () => {
+    if (!commentText.trim()) return
+    setPostingComment(true)
+    await supabase.from('task_comments').insert({
+      company_id: companyId,
+      task_id: task.id,
+      user_id: userId,
+      content: commentText.trim(),
+    })
+    setCommentText('')
+    await fetchComments()
+    setPostingComment(false)
+  }
+
+  const handleLogBlocker = async () => {
+    if (!blockerText.trim()) return
+    setLoggingBlocker(true)
+    await supabase.from('task_blockers').insert({
+      company_id: companyId,
+      task_id: task.id,
+      project_id: project.id,
+      reported_by: userId,
+      description: blockerText.trim(),
+      status: 'open',
+    })
+    setBlockerText('')
+    await fetchBlockers()
+    setLoggingBlocker(false)
+  }
+
+  const handleResolveBlocker = async (blockerId) => {
+    await supabase.from('task_blockers').update({
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+    }).eq('id', blockerId)
+    fetchBlockers()
+  }
+
+  const isOverdue = task.due_date && task.status !== 'done' && new Date(task.due_date) < new Date()
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[88vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-surface-border flex-shrink-0">
+          <h3 className="font-bold text-brand-charcoal-dark">Task Detail</h3>
+          <button onClick={onClose}><X size={18} className="text-brand-charcoal" /></button>
+        </div>
+
+        {/* Body — two columns */}
+        <div className="flex-1 overflow-hidden flex">
+
+          {/* Left: task info (60%) */}
+          <div className="w-3/5 p-5 border-r border-surface-border overflow-y-auto space-y-4">
+            <div>
+              <label className="label">Title</label>
+              <input
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                className="input font-medium"
+                placeholder="Task title"
+              />
+            </div>
+            <div>
+              <label className="label">Description</label>
+              <textarea
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                className="input min-h-[80px] resize-none"
+                placeholder="Additional details..."
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="input">
+                  {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Priority</label>
+                <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input">
+                  {PRIORITIES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Phase</label>
+                <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))} className="input">
+                  <option value="">— Any —</option>
+                  {PHASES.map(p => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Due Date</label>
+                <input
+                  type="date"
+                  value={form.due_date}
+                  onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
+                  className={`input ${isOverdue ? 'border-status-red/40 text-status-red' : ''}`}
+                />
+              </div>
+            </div>
+            {saveError && <div className="flex items-center gap-2 text-status-red text-sm"><AlertCircle size={14}/>{saveError}</div>}
+            <div className="flex justify-end">
+              <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
+                {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+
+          {/* Right: comments + blockers (40%) */}
+          <div className="w-2/5 flex flex-col overflow-hidden">
+            {/* Tabs */}
+            <div className="flex border-b border-surface-border flex-shrink-0">
+              <button
+                onClick={() => setActiveTab('comments')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'comments' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'
+                }`}
+              >
+                <MessageSquare size={14} />
+                Comments
+                {comments.length > 0 && <span className="text-xs bg-surface-secondary text-brand-charcoal rounded-full px-1.5 py-0.5">{comments.length}</span>}
+              </button>
+              <button
+                onClick={() => setActiveTab('blockers')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'blockers' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'
+                }`}
+              >
+                <ShieldAlert size={14} />
+                Blockers
+                {blockers.filter(b => b.status === 'open').length > 0 && (
+                  <span className="text-xs bg-status-red-bg text-status-red rounded-full px-1.5 py-0.5">
+                    {blockers.filter(b => b.status === 'open').length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 overflow-y-auto p-4">
+
+              {/* Comments tab */}
+              {activeTab === 'comments' && (
+                <div className="flex flex-col h-full gap-3">
+                  <div className="flex-1 space-y-3">
+                    {commentsLoading ? (
+                      <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-brand-orange" /></div>
+                    ) : comments.length === 0 ? (
+                      <div className="text-center py-8">
+                        <MessageSquare size={24} className="mx-auto text-gray-300 mb-2" />
+                        <p className="text-sm text-brand-charcoal/40">No comments yet</p>
+                      </div>
+                    ) : (
+                      comments.map(c => (
+                        <div key={c.id} className="flex items-start gap-2">
+                          <div className="w-7 h-7 rounded-full bg-brand-orange flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-xs font-bold">
+                              {(c.profiles?.full_name || 'U')[0].toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-xs font-semibold text-brand-charcoal-dark">
+                                {c.profiles?.full_name || 'Unknown'}
+                              </span>
+                              <span className="text-xs text-gray-400">{timeAgo(c.created_at)}</span>
+                            </div>
+                            <p className="text-sm text-brand-charcoal mt-0.5 break-words">{c.content}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {/* Post comment */}
+                  <div className="flex gap-2 flex-shrink-0 pt-2 border-t border-surface-border">
+                    <input
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handlePostComment()}
+                      placeholder="Add a comment..."
+                      className="input text-sm flex-1"
+                    />
+                    <button
+                      onClick={handlePostComment}
+                      disabled={!commentText.trim() || postingComment}
+                      className="btn-primary text-sm px-3 py-2 flex-shrink-0 disabled:opacity-50"
+                    >
+                      {postingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Blockers tab */}
+              {activeTab === 'blockers' && (
+                <div className="flex flex-col gap-3">
+                  {blockersLoading ? (
+                    <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-brand-orange" /></div>
+                  ) : blockers.length === 0 ? (
+                    <div className="text-center py-6">
+                      <ShieldAlert size={24} className="mx-auto text-gray-300 mb-2" />
+                      <p className="text-sm text-brand-charcoal/40">No blockers logged</p>
+                    </div>
+                  ) : (
+                    blockers.map(b => (
+                      <div key={b.id} className={`rounded-lg p-3 border ${b.status === 'open' ? 'bg-status-red-bg border-status-red/20' : 'bg-status-green-bg border-status-green/20'}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-brand-charcoal-dark break-words">{b.description}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className={`text-xs font-medium ${b.status === 'open' ? 'text-status-red' : 'text-status-green'}`}>
+                                {b.status === 'open' ? '● Open' : '● Resolved'}
+                              </span>
+                              <span className="text-xs text-gray-400">{timeAgo(b.created_at)}</span>
+                            </div>
+                            {b.status === 'resolved' && b.resolved_at && (
+                              <p className="text-xs text-status-green/70 mt-0.5">Resolved {timeAgo(b.resolved_at)}</p>
+                            )}
+                          </div>
+                          {b.status === 'open' && (
+                            <button
+                              onClick={() => handleResolveBlocker(b.id)}
+                              className="flex items-center gap-1 text-xs text-status-green bg-white border border-status-green/30 px-2 py-1 rounded hover:bg-status-green-bg transition-colors flex-shrink-0"
+                            >
+                              <CheckCheck size={11} /> Resolve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {/* Log blocker form */}
+                  <div className="pt-2 border-t border-surface-border space-y-2">
+                    <label className="label text-xs">Log a Blocker</label>
+                    <textarea
+                      value={blockerText}
+                      onChange={e => setBlockerText(e.target.value)}
+                      rows={2}
+                      className="input text-sm resize-none"
+                      placeholder="Describe what's blocking this task..."
+                    />
+                    <button
+                      onClick={handleLogBlocker}
+                      disabled={!blockerText.trim() || loggingBlocker}
+                      className="btn-primary text-sm w-full flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loggingBlocker ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
+                      Log Blocker
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Task Card ────────────────────────────────────────────────────────────────
-function TaskCard({ task, onEdit, onStatusChange, onDelete }) {
+function TaskCard({ task, onEdit, onDetail, onStatusChange, onDelete }) {
   const status = STATUSES.find(s => s.id === task.status) || STATUSES[0]
   const priority = PRIORITIES.find(p => p.id === task.priority) || PRIORITIES[1]
   const SIcon = status.icon
@@ -33,10 +385,19 @@ function TaskCard({ task, onEdit, onStatusChange, onDelete }) {
   const isOverdue = task.due_date && task.status !== 'done' && new Date(task.due_date) < new Date()
 
   return (
-    <div className={`bg-white border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow group ${task.status === 'done' ? 'opacity-70' : ''}`}>
+    <div
+      className={`bg-white border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${task.status === 'done' ? 'opacity-70' : ''}`}
+      onClick={(e) => {
+        // Only open detail if not clicking the status button, edit, or delete
+        if (e.target.closest('[data-action]')) return
+        onDetail(task)
+      }}
+    >
       <div className="flex items-start gap-2">
         <button
-          onClick={() => {
+          data-action="status"
+          onClick={(e) => {
+            e.stopPropagation()
             const next = task.status === 'todo' ? 'in_progress' : task.status === 'in_progress' ? 'done' : task.status === 'done' ? 'todo' : task.status
             onStatusChange(task.id, next)
           }}
@@ -66,10 +427,18 @@ function TaskCard({ task, onEdit, onStatusChange, onDelete }) {
           </div>
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button onClick={() => onEdit(task)} className="p-1 text-brand-charcoal hover:text-brand-orange transition-colors">
+          <button
+            data-action="edit"
+            onClick={(e) => { e.stopPropagation(); onEdit(task) }}
+            className="p-1 text-brand-charcoal hover:text-brand-orange transition-colors"
+          >
             <Edit2 size={12} />
           </button>
-          <button onClick={() => onDelete(task.id)} className="p-1 text-brand-charcoal hover:text-status-red transition-colors">
+          <button
+            data-action="delete"
+            onClick={(e) => { e.stopPropagation(); onDelete(task.id) }}
+            className="p-1 text-brand-charcoal hover:text-status-red transition-colors"
+          >
             <Trash2 size={12} />
           </button>
         </div>
@@ -79,7 +448,7 @@ function TaskCard({ task, onEdit, onStatusChange, onDelete }) {
 }
 
 // ─── Kanban Column ────────────────────────────────────────────────────────────
-function KanbanColumn({ status, tasks, onAddTask, onEdit, onStatusChange, onDelete }) {
+function KanbanColumn({ status, tasks, onAddTask, onEdit, onDetail, onStatusChange, onDelete }) {
   const SIcon = status.icon
   return (
     <div className="flex flex-col min-w-[260px] max-w-[280px] flex-1">
@@ -95,7 +464,14 @@ function KanbanColumn({ status, tasks, onAddTask, onEdit, onStatusChange, onDele
       </div>
       <div className="flex-1 p-2 space-y-2 bg-surface-secondary/50 rounded-b-lg min-h-[200px]">
         {tasks.map(task => (
-          <TaskCard key={task.id} task={task} onEdit={onEdit} onStatusChange={onStatusChange} onDelete={onDelete} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            onEdit={onEdit}
+            onDetail={onDetail}
+            onStatusChange={onStatusChange}
+            onDelete={onDelete}
+          />
         ))}
         {tasks.length === 0 && (
           <div className="text-center py-6 text-brand-charcoal/30 text-xs">No tasks</div>
@@ -105,7 +481,7 @@ function KanbanColumn({ status, tasks, onAddTask, onEdit, onStatusChange, onDele
   )
 }
 
-// ─── Task Modal ───────────────────────────────────────────────────────────────
+// ─── Task Edit Modal ───────────────────────────────────────────────────────────
 function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState({
@@ -215,6 +591,7 @@ export default function Execution() {
   const [migrationNeeded, setMigrationNeeded] = useState(false)
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [modalConfig, setModalConfig] = useState(null) // { task?, defaultStatus? }
+  const [detailTask, setDetailTask] = useState(null)   // task for detail modal
 
   useEffect(() => {
     if (!user) return
@@ -363,6 +740,7 @@ export default function Execution() {
                   tasks={tasksByStatus[status.id] || []}
                   onAddTask={() => setModalConfig({ defaultStatus: status.id })}
                   onEdit={(task) => setModalConfig({ task })}
+                  onDetail={(task) => setDetailTask(task)}
                   onStatusChange={handleStatusChange}
                   onDelete={handleDelete}
                 />
@@ -372,7 +750,7 @@ export default function Execution() {
         </>
       )}
 
-      {/* Task Modal */}
+      {/* Task Edit Modal */}
       {modalConfig && selectedProject && userProfile && (
         <TaskModal
           task={modalConfig.task}
@@ -381,6 +759,18 @@ export default function Execution() {
           userId={userProfile.id}
           onClose={() => setModalConfig(null)}
           onSaved={() => { setModalConfig(null); fetchTasks(selectedProjectId) }}
+        />
+      )}
+
+      {/* Task Detail Modal */}
+      {detailTask && selectedProject && userProfile && (
+        <TaskDetailModal
+          task={detailTask}
+          project={selectedProject}
+          companyId={userProfile.company_id}
+          userId={userProfile.id}
+          onClose={() => setDetailTask(null)}
+          onSaved={() => { setDetailTask(null); fetchTasks(selectedProjectId) }}
         />
       )}
     </div>

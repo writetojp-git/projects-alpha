@@ -37,8 +37,27 @@ Return ONLY valid JSON — no markdown, no explanation, no code fences. Use this
   "key_risks": ["risk 1", "risk 2", "risk 3"],
   "success_metrics": ["metric 1 with target", "metric 2 with target", "metric 3 with target"],
   "estimated_savings": "estimated annual savings or efficiency gain description",
-  "department": "relevant department or functional area"
+  "department": "relevant department or functional area",
+  "phases": [
+    {
+      "name": "Define",
+      "order": 1,
+      "duration_weeks": 2,
+      "key_tasks": ["task 1", "task 2", "task 3", "task 4"]
+    }
+  ],
+  "total_timeline_weeks": 12,
+  "recommended_team_size": 4
 }
+
+For the phases array, match the project type:
+- dmaic: Define, Measure, Analyze, Improve, Control (5 phases)
+- dmadv: Define, Measure, Analyze, Design, Verify (5 phases)
+- kaizen: Plan, Do, Check, Act (4 phases)
+- lean: Identify, Map, Analyze, Improve, Sustain (5 phases)
+- general: Initiate, Plan, Execute, Close (4 phases)
+
+Each phase should have 3-5 specific key_tasks relevant to the project. duration_weeks should be realistic for the scope.
 
 Choose project type based on:
 - dmaic: existing broken process with measurable defects to fix

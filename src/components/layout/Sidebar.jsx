@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, FileText, Inbox,
-  BarChart3, BookOpen, Activity, Settings, LogOut, ChevronLeft
+  BarChart3, BookOpen, Activity, Settings, LogOut, ChevronLeft,
+  FileCheck, CreditCard
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useState } from 'react'
@@ -11,9 +12,11 @@ const navItems = [
   { to: '/portfolio', icon: BarChart3, label: 'Portfolio' },
   { to: '/intake', icon: Inbox, label: 'Intake Queue' },
   { to: '/workspace', icon: FolderOpen, label: 'Workspace' },
+  { to: '/charter', icon: FileCheck, label: 'Charter' },
   { to: '/execution', icon: Activity, label: 'Execution' },
   { to: '/templates', icon: BookOpen, label: 'Templates' },
   { to: '/activity', icon: FileText, label: 'Activity Feed' },
+  { to: '/billing', icon: CreditCard, label: 'Billing' },
 ]
 
 export default function Sidebar() {
