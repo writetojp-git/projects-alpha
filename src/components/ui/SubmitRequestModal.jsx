@@ -11,6 +11,7 @@ const PROJECT_TYPES = [
   { value: 'kaizen',  label: 'Kaizen — Rapid Improvement Event' },
   { value: 'lean',    label: 'Lean — Waste Elimination' },
   { value: 'general', label: 'General — Other Initiative' },
+  { value: 'custom',  label: 'Custom — Define Your Own Phases' },
 ]
 
 const UNIT_PLACEHOLDERS = {

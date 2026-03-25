@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
-  FolderOpen, ChevronDown, ChevronRight, Plus, Trash2,
+  FolderOpen, ChevronDown, ChevronRight, Plus, Trash2, Pencil,
   Loader2, AlertCircle, Calendar, Target, TrendingUp, BarChart3, Clock,
   CheckCircle2, XCircle, AlertTriangle, Save, X, Check,
   Activity, FileText, Upload, File, Download, Paperclip, RefreshCw
@@ -163,6 +163,7 @@ const TEMPLATE_PHASES = {
       ],
     },
   ],
+  custom: [],
 }
 
 // ── Health / metric config ────────────────────────────────────
@@ -609,8 +610,14 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
   const [addingSectionFor, setAddingSectionFor] = useState(null) // phase_name
   const [newSectionName, setNewSectionName] = useState('')
   const [stepsCache, setStepsCache] = useState({}) // sectionId -> steps text
+  const [addingPhase, setAddingPhase] = useState(false)
+  const [newPhaseName, setNewPhaseName] = useState('')
+  const [renamingPhaseId, setRenamingPhaseId] = useState(null)
+  const [renamePhaseName, setRenamePhaseName] = useState('')
+  const [actionItemInputs, setActionItemInputs] = useState({}) // sectionId -> input text
 
   // Pick template based on project type
+  const isCustom = projectType === 'custom'
   const templatePhases = TEMPLATE_PHASES[projectType] || TEMPLATE_PHASES.general
 
   const loadDates = async () => {
@@ -770,6 +777,74 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
     loadDates()
   }
 
+  // ── Custom project phase management ──────────────────────────
+  const addCustomPhase = async () => {
+    if (!newPhaseName.trim()) return
+    setSaving(true)
+    const maxOrder = phaseDates.length > 0 ? Math.max(...phaseDates.map(p => p.phase_order || 0)) : 0
+    await supabase.from('project_phase_dates').insert({
+      project_id: projectId,
+      phase_name: newPhaseName.trim(),
+      phase_order: maxOrder + 1,
+      status: 'pending',
+      is_custom: true,
+    })
+    setAddingPhase(false)
+    setNewPhaseName('')
+    setSaving(false)
+    loadDates()
+  }
+
+  const renamePhase = async (phaseId, oldName) => {
+    const trimmed = renamePhaseName.trim()
+    if (!trimmed || trimmed === oldName) { setRenamingPhaseId(null); return }
+    setSaving(true)
+    await supabase.from('project_phase_dates').update({ phase_name: trimmed }).eq('id', phaseId)
+    await supabase.from('project_section_dates').update({ phase_name: trimmed })
+      .eq('project_id', projectId).eq('phase_name', oldName)
+    setRenamingPhaseId(null)
+    setSaving(false)
+    loadDates()
+  }
+
+  const deletePhase = async (phaseId, phaseName) => {
+    if (!window.confirm(`Delete phase "${phaseName}" and all its sections? This cannot be undone.`)) return
+    setSaving(true)
+    await supabase.from('project_section_dates').delete().eq('project_id', projectId).eq('phase_name', phaseName)
+    await supabase.from('project_phase_dates').delete().eq('id', phaseId)
+    setSaving(false)
+    loadDates()
+  }
+
+  // ── Action items (JSONB per section) ──────────────────────────
+  const addActionItem = async (sectionId, text) => {
+    if (!text.trim()) return
+    const section = sectionDates.find(s => s.id === sectionId)
+    const existing = Array.isArray(section?.action_items) ? section.action_items : []
+    const newItem = { id: Date.now().toString(), text: text.trim(), done: false, sort_order: existing.length + 1 }
+    await supabase.from('project_section_dates').update({ action_items: [...existing, newItem] }).eq('id', sectionId)
+    setActionItemInputs(prev => ({ ...prev, [sectionId]: '' }))
+    loadDates()
+  }
+
+  const toggleActionItem = async (sectionId, itemId) => {
+    const section = sectionDates.find(s => s.id === sectionId)
+    const existing = Array.isArray(section?.action_items) ? section.action_items : []
+    await supabase.from('project_section_dates')
+      .update({ action_items: existing.map(item => item.id === itemId ? { ...item, done: !item.done } : item) })
+      .eq('id', sectionId)
+    loadDates()
+  }
+
+  const deleteActionItem = async (sectionId, itemId) => {
+    const section = sectionDates.find(s => s.id === sectionId)
+    const existing = Array.isArray(section?.action_items) ? section.action_items : []
+    await supabase.from('project_section_dates')
+      .update({ action_items: existing.filter(item => item.id !== itemId) })
+      .eq('id', sectionId)
+    loadDates()
+  }
+
   const today = new Date().toISOString().split('T')[0]
 
   if (loading) {
@@ -781,14 +856,19 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-brand-orange" />
-          <h3 className="font-bold text-brand-charcoal-dark">Phase Timeline</h3>
+          <h3 className="font-bold text-brand-charcoal-dark">{isCustom ? 'Custom Phases' : 'Phase Timeline'}</h3>
           {phaseDates.length > 0 && (
             <span className="text-xs bg-gray-100 text-brand-charcoal px-2 py-0.5 rounded-full capitalize">
               {projectType || 'dmaic'}
             </span>
           )}
         </div>
-        {phaseDates.length === 0 ? (
+        {isCustom ? (
+          <button onClick={() => { setAddingPhase(true); setNewPhaseName('') }}
+            className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3" disabled={saving}>
+            <Plus size={14} /> Add Phase
+          </button>
+        ) : phaseDates.length === 0 ? (
           <button onClick={initializePhases}
             className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3" disabled={saving}>
             {saving
@@ -806,7 +886,31 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
         )}
       </div>
 
+      {/* Add phase inline input (custom projects only) */}
+      {isCustom && addingPhase && (
+        <div className="flex gap-2 mb-4">
+          <input
+            className="input py-1.5 text-sm flex-1"
+            placeholder="Phase name (e.g. Discovery, Build, Launch…)"
+            value={newPhaseName}
+            onChange={e => setNewPhaseName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') addCustomPhase(); if (e.key === 'Escape') setAddingPhase(false) }}
+            autoFocus />
+          <button onClick={addCustomPhase} className="btn-primary py-1.5 px-3 text-sm" disabled={saving}>Add</button>
+          <button onClick={() => setAddingPhase(false)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
+        </div>
+      )}
+
       {phaseDates.length === 0 ? (
+        isCustom ? (
+          <div className="text-center py-10 text-brand-charcoal">
+            <div className="w-14 h-14 rounded-2xl bg-brand-orange/10 flex items-center justify-center mx-auto mb-3">
+              <Plus size={28} className="text-brand-orange" />
+            </div>
+            <p className="font-semibold text-brand-charcoal-dark">Blank canvas — build your own phases</p>
+            <p className="text-sm text-brand-charcoal mt-1">Click "Add Phase" to define your first phase, then add sections and action items within each.</p>
+          </div>
+        ) : (
         <div className="text-center py-8 text-brand-charcoal">
           <Calendar size={28} className="text-gray-300 mx-auto mb-2" />
           <p className="text-sm">
@@ -815,6 +919,7 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
             template phases and sections for this project.
           </p>
         </div>
+        )
       ) : (
         <div className="space-y-2">
           {phaseDates.map(pd => {
@@ -829,26 +934,49 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
               <div key={pd.id} className={`border rounded-xl overflow-hidden ${isOverdue ? 'border-red-300 bg-red-50/30' : isNearDue ? 'border-yellow-300 bg-yellow-50/30' : 'border-gray-200'}`}>
 
                 {/* Phase header row */}
-                <button onClick={() => setExpandedPhase(isExpanded ? null : pd.phase_name)}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50/50 transition-colors">
-                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  <span className="font-semibold text-brand-charcoal-dark flex-1 text-left">{pd.phase_name}</span>
+                <div className="flex items-center gap-1 p-3 hover:bg-gray-50/50 transition-colors">
+                  <button onClick={() => setExpandedPhase(isExpanded ? null : pd.phase_name)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    {isExpanded ? <ChevronDown size={16} className="flex-shrink-0" /> : <ChevronRight size={16} className="flex-shrink-0" />}
+                    {isCustom && renamingPhaseId === pd.id ? (
+                      <input
+                        className="input py-0.5 text-sm font-semibold flex-1"
+                        value={renamePhaseName}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setRenamePhaseName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') renamePhase(pd.id, pd.phase_name); if (e.key === 'Escape') setRenamingPhaseId(null) }}
+                        onBlur={() => renamePhase(pd.id, pd.phase_name)}
+                        autoFocus />
+                    ) : (
+                      <span className="font-semibold text-brand-charcoal-dark truncate">{pd.phase_name}</span>
+                    )}
+                  </button>
                   {sections.length > 0 && (
-                    <span className="text-xs text-gray-500">{completedSections}/{sections.length} sections</span>
+                    <span className="text-xs text-gray-500 flex-shrink-0">{completedSections}/{sections.length} sections</span>
                   )}
-                  {isOverdue && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><AlertTriangle size={12} /> Overdue</span>}
-                  {isNearDue && <span className="text-xs text-yellow-600 font-medium flex items-center gap-1"><Clock size={12} /> Due Soon</span>}
-                  <select className="text-xs bg-white border border-gray-200 rounded px-2 py-1"
+                  {isOverdue && <span className="text-xs text-red-600 font-medium flex items-center gap-1 flex-shrink-0"><AlertTriangle size={12} /> Overdue</span>}
+                  {isNearDue && <span className="text-xs text-yellow-600 font-medium flex items-center gap-1 flex-shrink-0"><Clock size={12} /> Due Soon</span>}
+                  {isCustom && pd.is_custom && renamingPhaseId !== pd.id && (
+                    <>
+                      <button onClick={() => { setRenamingPhaseId(pd.id); setRenamePhaseName(pd.phase_name) }}
+                        className="p-1 text-gray-300 hover:text-brand-orange flex-shrink-0 transition-colors" title="Rename phase">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => deletePhase(pd.id, pd.phase_name)}
+                        className="p-1 text-gray-300 hover:text-red-500 flex-shrink-0 transition-colors" title="Delete phase">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                  <select className="text-xs bg-white border border-gray-200 rounded px-2 py-1 flex-shrink-0"
                     value={pd.status}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => { e.stopPropagation(); updatePhaseStatus(pd.id, e.target.value) }}>
+                    onChange={e => updatePhaseStatus(pd.id, e.target.value)}>
                     <option value="pending">Pending</option>
                     <option value="in_progress">In Progress</option>
                     <option value="completed">Completed</option>
                     <option value="skipped">Skipped</option>
                   </select>
-                  {pd.status === 'completed' && <CheckCircle2 size={16} className="text-green-500" />}
-                </button>
+                  {pd.status === 'completed' && <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />}
+                </div>
 
                 {/* Phase expanded content */}
                 {isExpanded && (
@@ -997,6 +1125,53 @@ function PhaseDatesManager({ projectId, projectType, companyId, userId, onHealth
                                       sectionName={s.section_name}
                                       userId={userId}
                                     />
+
+                                    {/* Action Items */}
+                                    <div>
+                                      <span className="text-xs font-semibold text-brand-charcoal flex items-center gap-1 mb-2">
+                                        <CheckCircle2 size={12} /> Action Items
+                                        {Array.isArray(s.action_items) && s.action_items.length > 0 && (
+                                          <span className="ml-1 text-gray-400 font-normal">
+                                            ({s.action_items.filter(a => a.done).length}/{s.action_items.length})
+                                          </span>
+                                        )}
+                                      </span>
+                                      {Array.isArray(s.action_items) && s.action_items.length > 0 && (
+                                        <div className="space-y-1.5 mb-2">
+                                          {s.action_items.map(item => (
+                                            <div key={item.id} className="flex items-center gap-2 group">
+                                              <button
+                                                onClick={() => toggleActionItem(s.id, item.id)}
+                                                className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${item.done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'}`}>
+                                                {item.done && <Check size={9} className="text-white" />}
+                                              </button>
+                                              <span className={`text-sm flex-1 ${item.done ? 'line-through text-gray-400' : 'text-brand-charcoal-dark'}`}>
+                                                {item.text}
+                                              </span>
+                                              <button
+                                                onClick={() => deleteActionItem(s.id, item.id)}
+                                                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-500 transition-all flex-shrink-0">
+                                                <Trash2 size={11} />
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="flex gap-2">
+                                        <input
+                                          className="input py-1 text-xs flex-1"
+                                          placeholder="Add action item…"
+                                          value={actionItemInputs[s.id] || ''}
+                                          onChange={e => setActionItemInputs(prev => ({ ...prev, [s.id]: e.target.value }))}
+                                          onKeyDown={e => { if (e.key === 'Enter') addActionItem(s.id, actionItemInputs[s.id] || '') }}
+                                        />
+                                        <button
+                                          onClick={() => addActionItem(s.id, actionItemInputs[s.id] || '')}
+                                          className="text-xs text-brand-orange border border-brand-orange/30 rounded-lg px-2 py-1 hover:bg-brand-orange/5 transition-colors flex items-center gap-1">
+                                          <Plus size={11} /> Add
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </div>
