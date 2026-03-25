@@ -119,7 +119,6 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
       priority: form.priority,
       phase: form.phase || null,
       due_date: form.due_date || null,
-      updated_by: userId,
     }).eq('id', task.id)
     if (error) { setSaveError(error.message); setSaving(false) }
     else onSaved()
@@ -349,7 +348,6 @@ function TaskModal({ task, project, defaultPhase, companyId, userId, onClose, on
       priority: form.priority,
       phase: form.phase || null,
       due_date: form.due_date || null,
-      updated_by: userId,
     }
     let err
     if (isEdit) {
