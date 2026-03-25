@@ -8,6 +8,7 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Save, X, Check,
   Activity, FileText, Upload, File, Download, Paperclip, RefreshCw
 } from 'lucide-react'
+import AICoach from '../../components/ai/AICoach'
 
 // ── Template Phases per project type ─────────────────────────
 const TEMPLATE_PHASES = {
@@ -1312,6 +1313,13 @@ function ProjectDetail({ project, userProfile }) {
         projectId={project.id}
         companyId={userProfile.company_id}
         userProfile={userProfile}
+      />
+
+      {/* AI Coach */}
+      <AICoach
+        project={project}
+        userProfile={userProfile}
+        completion={{ ...completion, pct }}
       />
     </div>
   )

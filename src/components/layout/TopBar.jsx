@@ -1,9 +1,10 @@
-import { Bell, Search, Plus } from 'lucide-react'
+import { Bell, Search, Plus, Sparkles } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import SubmitRequestModal from '../ui/SubmitRequestModal'
+import AIProjectPlanner from '../ai/AIProjectPlanner'
 
 const pageTitles = {
   '/dashboard': 'Dashboard',
@@ -23,6 +24,7 @@ export default function TopBar() {
   const title = pageTitles[location.pathname] || 'Projects Alpha'
 
   const [showRequestModal, setShowRequestModal] = useState(false)
+  const [showAIPlanner, setShowAIPlanner] = useState(false)
   const [userProfile, setUserProfile] = useState(null)
 
   // Load user profile for the modal
@@ -56,6 +58,15 @@ export default function TopBar() {
           />
         </div>
 
+        {/* AI Project Planner */}
+        <button
+          onClick={() => setShowAIPlanner(true)}
+          className="flex items-center gap-1.5 text-sm py-1.5 px-3 rounded border border-brand-orange/30 text-brand-orange bg-brand-orange/5 hover:bg-brand-orange/10 transition-colors font-semibold"
+        >
+          <Sparkles size={14} />
+          AI Planner
+        </button>
+
         {/* New Request — available on every page */}
         <button
           onClick={() => setShowRequestModal(true)}
@@ -77,6 +88,12 @@ export default function TopBar() {
         <SubmitRequestModal
           onClose={() => setShowRequestModal(false)}
           onSuccess={handleRequestSuccess}
+          userProfile={userProfile}
+        />
+      )}
+      {showAIPlanner && userProfile && (
+        <AIProjectPlanner
+          onClose={() => setShowAIPlanner(false)}
           userProfile={userProfile}
         />
       )}
