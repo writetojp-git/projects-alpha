@@ -235,6 +235,7 @@ function ConvertModal({ request, profile, onClose, onConverted }) {
                 <option value="kaizen">Kaizen</option>
                 <option value="lean">Lean</option>
                 <option value="general">General</option>
+                <option value="custom">Custom</option>
               </select>
             </div>
             <div>
