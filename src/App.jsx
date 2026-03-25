@@ -18,6 +18,7 @@ import Templates from './pages/templates/Templates'
 import Activity from './pages/activity/Activity'
 import Billing from './pages/billing/Billing'
 import Settings from './pages/settings/Settings'
+import Repository from './pages/repository/Repository'
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/templates" element={<Templates />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/billing" element={<Billing />} />
+            <Route path="/repository" element={<Repository />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
 

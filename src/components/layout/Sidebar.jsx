@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, FileText, Inbox,
   BarChart3, BookOpen, Activity, Settings, LogOut, ChevronLeft,
-  FileCheck, CreditCard
+  FileCheck, CreditCard, Archive
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useState } from 'react'
@@ -15,6 +15,7 @@ const navItems = [
   { to: '/charter', icon: FileCheck, label: 'Charter' },
   { to: '/execution', icon: Activity, label: 'Execution' },
   { to: '/templates', icon: BookOpen, label: 'Templates' },
+  { to: '/repository', icon: Archive, label: 'Repository' },
   { to: '/activity', icon: FileText, label: 'Activity Feed' },
   { to: '/billing', icon: CreditCard, label: 'Billing' },
 ]

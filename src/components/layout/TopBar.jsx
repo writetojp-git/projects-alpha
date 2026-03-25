@@ -17,6 +17,7 @@ const pageTitles = {
   '/templates': 'Templates',
   '/activity': 'Activity Feed',
   '/billing': 'Billing & Plan',
+  '/repository': 'Repository',
   '/settings': 'Settings',
 }
 
