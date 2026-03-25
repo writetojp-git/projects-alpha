@@ -690,7 +690,7 @@ export default function Execution() {
   useEffect(() => {
     if (!userProfile?.company_id) return
     supabase.from('projects')
-      .select('id, name, phase, health, type, status, department')
+      .select('id, name, phase, health, type, status')
       .eq('company_id', userProfile.company_id)
       .not('status', 'eq', 'cancelled')
       .order('name')

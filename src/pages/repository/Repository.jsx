@@ -113,9 +113,6 @@ function ProjectCard({ project, companyId }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${typeColor} uppercase`}>{project.type || 'general'}</span>
-            {project.department && (
-              <span className="text-xs text-brand-charcoal/50">{project.department}</span>
-            )}
           </div>
           <h3 className="font-semibold text-brand-charcoal-dark text-base leading-snug">{project.name}</h3>
           {project.description && (
@@ -234,7 +231,7 @@ export default function Repository() {
   useEffect(() => {
     if (!userProfile?.company_id) return
     supabase.from('projects')
-      .select('id, name, type, status, department, description, completed_date, actual_savings, phase')
+      .select('id, name, type, status, description, completed_date, actual_savings, phase')
       .eq('company_id', userProfile.company_id)
       .eq('status', 'completed')
       .order('completed_date', { ascending: false })
@@ -245,7 +242,7 @@ export default function Repository() {
   }, [userProfile])
 
   const filtered = projects.filter(p => {
-    const matchesSearch = !search || [p.name, p.description, p.department].some(
+    const matchesSearch = !search || [p.name, p.description].some(
       f => f?.toLowerCase().includes(search.toLowerCase())
     )
     const matchesType = typeFilter === 'all' || p.type === typeFilter
