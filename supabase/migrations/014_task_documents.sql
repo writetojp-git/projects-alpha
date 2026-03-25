@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_task_documents_company_id ON task_documents(compa
 -- Full-text search index on projects (for repository search)
 CREATE INDEX IF NOT EXISTS idx_projects_fts ON projects
   USING gin(to_tsvector('english',
-    coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || coalesce(department, '')
+    coalesce(name, '') || ' ' || coalesce(description, '')
   ));
 
 -- Index for tasks ordering within a project
