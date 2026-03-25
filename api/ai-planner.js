@@ -66,7 +66,9 @@ Choose project type based on:
 
     let plan
     try {
-      plan = JSON.parse(text)
+      // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+      plan = JSON.parse(cleaned)
     } catch {
       console.error('Failed to parse AI response as JSON:', text)
       return res.status(500).json({ error: 'AI returned invalid JSON. Please try again.' })
