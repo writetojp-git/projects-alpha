@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
-  Plus, X, AlertCircle, ChevronDown, Calendar, Flag,
+  Plus, X, AlertCircle, Calendar, Flag,
   CheckCircle2, Circle, Clock, AlertTriangle, Loader2,
-  GripVertical, Edit2, Trash2, User, MessageSquare,
-  ShieldAlert, Send, CheckCheck
+  Edit2, Trash2, MessageSquare, ShieldAlert, Send,
+  CheckCheck, ChevronDown, ChevronRight, ClipboardList
 } from 'lucide-react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -23,7 +23,25 @@ const PRIORITIES = [
   { id: 'critical', label: 'Critical', cls: 'text-red-700 font-bold',  flag: 'text-red-700' },
 ]
 
-const PHASES = ['define', 'measure', 'analyze', 'improve', 'control']
+const TEMPLATE_PHASES = {
+  dmaic:   ['Define', 'Measure', 'Analyze', 'Improve', 'Control'],
+  dmadv:   ['Define', 'Measure', 'Analyze', 'Design', 'Verify'],
+  kaizen:  ['Plan', 'Do', 'Check', 'Act'],
+  lean:    ['Identify', 'Map', 'Analyze', 'Improve', 'Sustain'],
+  general: ['Initiate', 'Plan', 'Execute', 'Close'],
+}
+
+const HEALTH_DOT = {
+  green:  'bg-status-green',
+  yellow: 'bg-status-yellow',
+  red:    'bg-status-red',
+}
+
+function getPhasesForProject(project) {
+  if (!project) return []
+  const type = project.type?.toLowerCase()
+  return TEMPLATE_PHASES[type] || TEMPLATE_PHASES.general
+}
 
 function timeAgo(dateStr) {
   if (!dateStr) return ''
@@ -38,6 +56,7 @@ function timeAgo(dateStr) {
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved }) {
+  const phases = getPhasesForProject(project)
   const [activeTab, setActiveTab] = useState('comments')
   const [form, setForm] = useState({
     title: task?.title || '',
@@ -50,19 +69,16 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  // Comments
   const [comments, setComments] = useState([])
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [postingComment, setPostingComment] = useState(false)
 
-  // Blockers
   const [blockers, setBlockers] = useState([])
   const [blockersLoading, setBlockersLoading] = useState(false)
   const [blockerText, setBlockerText] = useState('')
   const [loggingBlocker, setLoggingBlocker] = useState(false)
 
-  // Load comments
   const fetchComments = useCallback(async () => {
     if (!task?.id) return
     setCommentsLoading(true)
@@ -75,7 +91,6 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
     setCommentsLoading(false)
   }, [task?.id])
 
-  // Load blockers
   const fetchBlockers = useCallback(async () => {
     if (!task?.id) return
     setBlockersLoading(true)
@@ -153,34 +168,21 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[88vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-surface-border flex-shrink-0">
           <h3 className="font-bold text-brand-charcoal-dark">Task Detail</h3>
           <button onClick={onClose}><X size={18} className="text-brand-charcoal" /></button>
         </div>
 
-        {/* Body — two columns */}
         <div className="flex-1 overflow-hidden flex">
-
-          {/* Left: task info (60%) */}
+          {/* Left: task info */}
           <div className="w-3/5 p-5 border-r border-surface-border overflow-y-auto space-y-4">
             <div>
               <label className="label">Title</label>
-              <input
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                className="input font-medium"
-                placeholder="Task title"
-              />
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input font-medium" placeholder="Task title" />
             </div>
             <div>
               <label className="label">Description</label>
-              <textarea
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="input min-h-[80px] resize-none"
-                placeholder="Additional details..."
-              />
+              <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input min-h-[80px] resize-none" placeholder="Additional details..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -200,18 +202,13 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
               <div>
                 <label className="label">Phase</label>
                 <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))} className="input">
-                  <option value="">— Any —</option>
-                  {PHASES.map(p => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                  <option value="">— Unassigned —</option>
+                  {phases.map(p => <option key={p} value={p.toLowerCase()}>{p}</option>)}
                 </select>
               </div>
               <div>
                 <label className="label">Due Date</label>
-                <input
-                  type="date"
-                  value={form.due_date}
-                  onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                  className={`input ${isOverdue ? 'border-status-red/40 text-status-red' : ''}`}
-                />
+                <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={`input ${isOverdue ? 'border-status-red/40 text-status-red' : ''}`} />
               </div>
             </div>
             {saveError && <div className="flex items-center gap-2 text-status-red text-sm"><AlertCircle size={14}/>{saveError}</div>}
@@ -223,40 +220,24 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
             </div>
           </div>
 
-          {/* Right: comments + blockers (40%) */}
+          {/* Right: comments + blockers */}
           <div className="w-2/5 flex flex-col overflow-hidden">
-            {/* Tabs */}
             <div className="flex border-b border-surface-border flex-shrink-0">
-              <button
-                onClick={() => setActiveTab('comments')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'comments' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'
-                }`}
-              >
+              <button onClick={() => setActiveTab('comments')} className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${activeTab === 'comments' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'}`}>
                 <MessageSquare size={14} />
                 Comments
                 {comments.length > 0 && <span className="text-xs bg-surface-secondary text-brand-charcoal rounded-full px-1.5 py-0.5">{comments.length}</span>}
               </button>
-              <button
-                onClick={() => setActiveTab('blockers')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'blockers' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'
-                }`}
-              >
+              <button onClick={() => setActiveTab('blockers')} className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors ${activeTab === 'blockers' ? 'text-brand-orange border-b-2 border-brand-orange' : 'text-brand-charcoal/60 hover:text-brand-charcoal'}`}>
                 <ShieldAlert size={14} />
                 Blockers
                 {blockers.filter(b => b.status === 'open').length > 0 && (
-                  <span className="text-xs bg-status-red-bg text-status-red rounded-full px-1.5 py-0.5">
-                    {blockers.filter(b => b.status === 'open').length}
-                  </span>
+                  <span className="text-xs bg-status-red-bg text-status-red rounded-full px-1.5 py-0.5">{blockers.filter(b => b.status === 'open').length}</span>
                 )}
               </button>
             </div>
 
-            {/* Tab content */}
             <div className="flex-1 overflow-y-auto p-4">
-
-              {/* Comments tab */}
               {activeTab === 'comments' && (
                 <div className="flex flex-col h-full gap-3">
                   <div className="flex-1 space-y-3">
@@ -271,15 +252,11 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
                       comments.map(c => (
                         <div key={c.id} className="flex items-start gap-2">
                           <div className="w-7 h-7 rounded-full bg-brand-orange flex items-center justify-center flex-shrink-0">
-                            <span className="text-white text-xs font-bold">
-                              {(c.profiles?.full_name || 'U')[0].toUpperCase()}
-                            </span>
+                            <span className="text-white text-xs font-bold">{(c.profiles?.full_name || 'U')[0].toUpperCase()}</span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2">
-                              <span className="text-xs font-semibold text-brand-charcoal-dark">
-                                {c.profiles?.full_name || 'Unknown'}
-                              </span>
+                              <span className="text-xs font-semibold text-brand-charcoal-dark">{c.profiles?.full_name || 'Unknown'}</span>
                               <span className="text-xs text-gray-400">{timeAgo(c.created_at)}</span>
                             </div>
                             <p className="text-sm text-brand-charcoal mt-0.5 break-words">{c.content}</p>
@@ -288,27 +265,15 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
                       ))
                     )}
                   </div>
-                  {/* Post comment */}
                   <div className="flex gap-2 flex-shrink-0 pt-2 border-t border-surface-border">
-                    <input
-                      value={commentText}
-                      onChange={e => setCommentText(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handlePostComment()}
-                      placeholder="Add a comment..."
-                      className="input text-sm flex-1"
-                    />
-                    <button
-                      onClick={handlePostComment}
-                      disabled={!commentText.trim() || postingComment}
-                      className="btn-primary text-sm px-3 py-2 flex-shrink-0 disabled:opacity-50"
-                    >
+                    <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handlePostComment()} placeholder="Add a comment..." className="input text-sm flex-1" />
+                    <button onClick={handlePostComment} disabled={!commentText.trim() || postingComment} className="btn-primary text-sm px-3 py-2 flex-shrink-0 disabled:opacity-50">
                       {postingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Blockers tab */}
               {activeTab === 'blockers' && (
                 <div className="flex flex-col gap-3">
                   {blockersLoading ? (
@@ -330,15 +295,9 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
                               </span>
                               <span className="text-xs text-gray-400">{timeAgo(b.created_at)}</span>
                             </div>
-                            {b.status === 'resolved' && b.resolved_at && (
-                              <p className="text-xs text-status-green/70 mt-0.5">Resolved {timeAgo(b.resolved_at)}</p>
-                            )}
                           </div>
                           {b.status === 'open' && (
-                            <button
-                              onClick={() => handleResolveBlocker(b.id)}
-                              className="flex items-center gap-1 text-xs text-status-green bg-white border border-status-green/30 px-2 py-1 rounded hover:bg-status-green-bg transition-colors flex-shrink-0"
-                            >
+                            <button onClick={() => handleResolveBlocker(b.id)} className="flex items-center gap-1 text-xs text-status-green bg-white border border-status-green/30 px-2 py-1 rounded hover:bg-status-green-bg transition-colors flex-shrink-0">
                               <CheckCheck size={11} /> Resolve
                             </button>
                           )}
@@ -346,22 +305,10 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
                       </div>
                     ))
                   )}
-
-                  {/* Log blocker form */}
                   <div className="pt-2 border-t border-surface-border space-y-2">
                     <label className="label text-xs">Log a Blocker</label>
-                    <textarea
-                      value={blockerText}
-                      onChange={e => setBlockerText(e.target.value)}
-                      rows={2}
-                      className="input text-sm resize-none"
-                      placeholder="Describe what's blocking this task..."
-                    />
-                    <button
-                      onClick={handleLogBlocker}
-                      disabled={!blockerText.trim() || loggingBlocker}
-                      className="btn-primary text-sm w-full flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
+                    <textarea value={blockerText} onChange={e => setBlockerText(e.target.value)} rows={2} className="input text-sm resize-none" placeholder="Describe what's blocking this task..." />
+                    <button onClick={handleLogBlocker} disabled={!blockerText.trim() || loggingBlocker} className="btn-primary text-sm w-full flex items-center justify-center gap-2 disabled:opacity-50">
                       {loggingBlocker ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
                       Log Blocker
                     </button>
@@ -376,120 +323,16 @@ function TaskDetailModal({ task, project, companyId, userId, onClose, onSaved })
   )
 }
 
-// ─── Task Card ────────────────────────────────────────────────────────────────
-function TaskCard({ task, onEdit, onDetail, onStatusChange, onDelete }) {
-  const status = STATUSES.find(s => s.id === task.status) || STATUSES[0]
-  const priority = PRIORITIES.find(p => p.id === task.priority) || PRIORITIES[1]
-  const SIcon = status.icon
-
-  const isOverdue = task.due_date && task.status !== 'done' && new Date(task.due_date) < new Date()
-
-  return (
-    <div
-      className={`bg-white border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow group cursor-pointer ${task.status === 'done' ? 'opacity-70' : ''}`}
-      onClick={(e) => {
-        // Only open detail if not clicking the status button, edit, or delete
-        if (e.target.closest('[data-action]')) return
-        onDetail(task)
-      }}
-    >
-      <div className="flex items-start gap-2">
-        <button
-          data-action="status"
-          onClick={(e) => {
-            e.stopPropagation()
-            const next = task.status === 'todo' ? 'in_progress' : task.status === 'in_progress' ? 'done' : task.status === 'done' ? 'todo' : task.status
-            onStatusChange(task.id, next)
-          }}
-          className="mt-0.5 flex-shrink-0 text-brand-charcoal/40 hover:text-brand-orange transition-colors"
-        >
-          <SIcon size={16} className={task.status === 'done' ? 'text-status-green' : task.status === 'blocked' ? 'text-status-red' : task.status === 'in_progress' ? 'text-blue-500' : ''} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium leading-snug ${task.status === 'done' ? 'line-through text-brand-charcoal/50' : 'text-brand-charcoal-dark'}`}>
-            {task.title}
-          </p>
-          {task.description && (
-            <p className="text-xs text-brand-charcoal mt-0.5 line-clamp-2">{task.description}</p>
-          )}
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {task.phase && (
-              <span className="text-xs px-1.5 py-0.5 bg-surface-secondary text-brand-charcoal rounded capitalize">{task.phase}</span>
-            )}
-            <Flag size={11} className={priority.flag} />
-            <span className={`text-xs ${priority.cls}`}>{priority.label}</span>
-            {task.due_date && (
-              <span className={`text-xs flex items-center gap-0.5 ${isOverdue ? 'text-status-red font-medium' : 'text-brand-charcoal'}`}>
-                <Calendar size={10} /> {new Date(task.due_date).toLocaleDateString()}
-                {isOverdue && ' ⚠'}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button
-            data-action="edit"
-            onClick={(e) => { e.stopPropagation(); onEdit(task) }}
-            className="p-1 text-brand-charcoal hover:text-brand-orange transition-colors"
-          >
-            <Edit2 size={12} />
-          </button>
-          <button
-            data-action="delete"
-            onClick={(e) => { e.stopPropagation(); onDelete(task.id) }}
-            className="p-1 text-brand-charcoal hover:text-status-red transition-colors"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Kanban Column ────────────────────────────────────────────────────────────
-function KanbanColumn({ status, tasks, onAddTask, onEdit, onDetail, onStatusChange, onDelete }) {
-  const SIcon = status.icon
-  return (
-    <div className="flex flex-col min-w-[260px] max-w-[280px] flex-1">
-      <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg ${status.color}`}>
-        <div className="flex items-center gap-2">
-          <SIcon size={14} />
-          <span className="text-xs font-semibold">{status.label}</span>
-          <span className="text-xs bg-white/50 rounded-full px-1.5 py-0.5 font-bold">{tasks.length}</span>
-        </div>
-        <button onClick={onAddTask} className="text-current opacity-60 hover:opacity-100 transition-opacity">
-          <Plus size={14} />
-        </button>
-      </div>
-      <div className="flex-1 p-2 space-y-2 bg-surface-secondary/50 rounded-b-lg min-h-[200px]">
-        {tasks.map(task => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            onEdit={onEdit}
-            onDetail={onDetail}
-            onStatusChange={onStatusChange}
-            onDelete={onDelete}
-          />
-        ))}
-        {tasks.length === 0 && (
-          <div className="text-center py-6 text-brand-charcoal/30 text-xs">No tasks</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Task Edit Modal ───────────────────────────────────────────────────────────
-function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
+// ─── Task Add/Edit Modal ──────────────────────────────────────────────────────
+function TaskModal({ task, project, defaultPhase, companyId, userId, onClose, onSaved }) {
+  const phases = getPhasesForProject(project)
   const isEdit = !!task?.id
   const [form, setForm] = useState({
     title: task?.title || '',
     description: task?.description || '',
     status: task?.status || 'todo',
     priority: task?.priority || 'medium',
-    phase: task?.phase || project?.phase || '',
+    phase: task?.phase || defaultPhase || '',
     due_date: task?.due_date || '',
   })
   const [saving, setSaving] = useState(false)
@@ -526,7 +369,7 @@ function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-surface-border">
-          <h3 className="font-bold text-brand-charcoal-dark">{isEdit ? 'Edit Task' : 'New Task'}</h3>
+          <h3 className="font-bold text-brand-charcoal-dark">{isEdit ? 'Edit Task' : 'Add Task'}</h3>
           <button onClick={onClose}><X size={18} className="text-brand-charcoal" /></button>
         </div>
         <div className="p-5 space-y-4">
@@ -536,7 +379,7 @@ function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
           </div>
           <div>
             <label className="label">Description</label>
-            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input min-h-[80px] resize-none" placeholder="Additional details..." />
+            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input min-h-[72px] resize-none" placeholder="Additional details..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -556,8 +399,8 @@ function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
             <div>
               <label className="label">Phase</label>
               <select value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))} className="input">
-                <option value="">— Any —</option>
-                {PHASES.map(p => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                <option value="">— Unassigned —</option>
+                {phases.map(p => <option key={p} value={p.toLowerCase()}>{p}</option>)}
               </select>
             </div>
             <div>
@@ -571,10 +414,161 @@ function TaskModal({ task, project, companyId, userId, onClose, onSaved }) {
           <button onClick={onClose} className="btn-secondary">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
             {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Save Changes' : 'Create Task'}
+            {isEdit ? 'Save Changes' : 'Add Task'}
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Task Row ─────────────────────────────────────────────────────────────────
+function TaskRow({ task, onStatusChange, onEdit, onDetail, onDelete }) {
+  const status = STATUSES.find(s => s.id === task.status) || STATUSES[0]
+  const priority = PRIORITIES.find(p => p.id === task.priority) || PRIORITIES[1]
+  const SIcon = status.icon
+  const isOverdue = task.due_date && task.status !== 'done' && new Date(task.due_date) < new Date()
+
+  const cycleStatus = () => {
+    const order = ['todo', 'in_progress', 'done']
+    const idx = order.indexOf(task.status)
+    const next = order[(idx + 1) % order.length]
+    onStatusChange(task.id, next)
+  }
+
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 hover:bg-surface-secondary/40 group transition-colors ${task.status === 'done' ? 'opacity-60' : ''}`}>
+      {/* Status toggle */}
+      <button onClick={cycleStatus} className="flex-shrink-0 text-brand-charcoal/40 hover:text-brand-orange transition-colors" title={`Status: ${status.label} — click to advance`}>
+        <SIcon size={16} className={
+          task.status === 'done' ? 'text-status-green' :
+          task.status === 'blocked' ? 'text-status-red' :
+          task.status === 'in_progress' ? 'text-blue-500' : ''
+        } />
+      </button>
+
+      {/* Title + description */}
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onDetail(task)}>
+        <p className={`text-sm font-medium leading-snug ${task.status === 'done' ? 'line-through text-brand-charcoal/50' : 'text-brand-charcoal-dark'}`}>
+          {task.title}
+        </p>
+        {task.description && (
+          <p className="text-xs text-brand-charcoal/60 truncate mt-0.5">{task.description}</p>
+        )}
+      </div>
+
+      {/* Priority */}
+      <div className="flex items-center gap-1 flex-shrink-0 w-20">
+        <Flag size={11} className={priority.flag} />
+        <span className={`text-xs ${priority.cls}`}>{priority.label}</span>
+      </div>
+
+      {/* Status badge */}
+      <div className="flex-shrink-0 w-24">
+        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>
+          {status.label}
+        </span>
+      </div>
+
+      {/* Due date */}
+      <div className="flex-shrink-0 w-24">
+        {task.due_date ? (
+          <span className={`text-xs flex items-center gap-1 ${isOverdue ? 'text-status-red font-medium' : 'text-brand-charcoal/60'}`}>
+            <Calendar size={11} />
+            {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {isOverdue && ' ⚠'}
+          </span>
+        ) : (
+          <span className="text-xs text-brand-charcoal/30">—</span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button onClick={() => onEdit(task)} className="p-1 text-brand-charcoal/50 hover:text-brand-orange transition-colors" title="Edit">
+          <Edit2 size={12} />
+        </button>
+        <button onClick={() => onDelete(task.id)} className="p-1 text-brand-charcoal/50 hover:text-status-red transition-colors" title="Delete">
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Phase Section ────────────────────────────────────────────────────────────
+function PhaseSection({ phaseName, tasks, isActive, onAddTask, onStatusChange, onEdit, onDetail, onDelete }) {
+  const [expanded, setExpanded] = useState(isActive || tasks.length > 0)
+  const done = tasks.filter(t => t.status === 'done').length
+  const blocked = tasks.filter(t => t.status === 'blocked').length
+  const inProgress = tasks.filter(t => t.status === 'in_progress').length
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${isActive ? 'border-brand-orange/40' : 'border-gray-100'}`}>
+      {/* Phase header */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${isActive ? 'bg-brand-orange/5 hover:bg-brand-orange/10' : 'bg-white hover:bg-surface-secondary/50'}`}
+      >
+        {expanded ? <ChevronDown size={14} className="flex-shrink-0 text-brand-charcoal/50" /> : <ChevronRight size={14} className="flex-shrink-0 text-brand-charcoal/50" />}
+        <span className={`text-sm font-semibold ${isActive ? 'text-brand-orange' : 'text-brand-charcoal-dark'}`}>
+          {phaseName}
+        </span>
+        {isActive && (
+          <span className="text-xs bg-brand-orange text-white px-2 py-0.5 rounded-full font-medium flex-shrink-0">Active</span>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          {inProgress > 0 && <span className="text-xs text-blue-600">{inProgress} in progress</span>}
+          {blocked > 0 && <span className="text-xs text-status-red font-medium">⚠ {blocked} blocked</span>}
+          <span className="text-xs text-brand-charcoal/50">{done}/{tasks.length} done</span>
+          {tasks.length > 0 && (
+            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-status-green rounded-full transition-all" style={{ width: `${tasks.length ? (done / tasks.length) * 100 : 0}%` }} />
+            </div>
+          )}
+        </div>
+      </button>
+
+      {/* Tasks */}
+      {expanded && (
+        <div className="bg-white">
+          {/* Column headers */}
+          {tasks.length > 0 && (
+            <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-100 bg-surface-secondary/30">
+              <div className="w-4 flex-shrink-0" />
+              <div className="flex-1 text-xs text-brand-charcoal/50 font-medium">Task</div>
+              <div className="w-20 text-xs text-brand-charcoal/50 font-medium flex-shrink-0">Priority</div>
+              <div className="w-24 text-xs text-brand-charcoal/50 font-medium flex-shrink-0">Status</div>
+              <div className="w-24 text-xs text-brand-charcoal/50 font-medium flex-shrink-0">Due</div>
+              <div className="w-12 flex-shrink-0" />
+            </div>
+          )}
+          {tasks.map(task => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              onStatusChange={onStatusChange}
+              onEdit={onEdit}
+              onDetail={onDetail}
+              onDelete={onDelete}
+            />
+          ))}
+          {tasks.length === 0 && (
+            <div className="px-4 py-5 text-center">
+              <p className="text-xs text-brand-charcoal/40">No tasks yet in this phase</p>
+            </div>
+          )}
+          {/* Add task row */}
+          <div className="px-4 py-2.5 border-t border-gray-50">
+            <button
+              onClick={() => onAddTask(phaseName.toLowerCase())}
+              className="flex items-center gap-1.5 text-xs text-brand-charcoal/50 hover:text-brand-orange transition-colors"
+            >
+              <Plus size={13} /> Add task to {phaseName}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -584,14 +578,13 @@ export default function Execution() {
   const { user } = useAuth()
   const [userProfile, setUserProfile] = useState(null)
   const [projects, setProjects] = useState([])
-  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [tasksLoading, setTasksLoading] = useState(false)
   const [migrationNeeded, setMigrationNeeded] = useState(false)
-  const [phaseFilter, setPhaseFilter] = useState('all')
-  const [modalConfig, setModalConfig] = useState(null) // { task?, defaultStatus? }
-  const [detailTask, setDetailTask] = useState(null)   // task for detail modal
+  const [modalConfig, setModalConfig] = useState(null) // { task?, defaultPhase? }
+  const [detailTask, setDetailTask] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -601,14 +594,15 @@ export default function Execution() {
 
   useEffect(() => {
     if (!userProfile?.company_id) return
-    supabase.from('projects').select('id, name, phase, health, type')
+    supabase.from('projects')
+      .select('id, name, phase, health, type, status')
       .eq('company_id', userProfile.company_id)
       .not('status', 'eq', 'cancelled')
       .order('name')
       .then(({ data }) => {
         const list = data || []
         setProjects(list)
-        if (list.length > 0 && !selectedProjectId) setSelectedProjectId(list[0].id)
+        if (list.length > 0) setSelectedProjectId(p => p || list[0].id)
         setLoading(false)
       })
   }, [userProfile])
@@ -636,7 +630,10 @@ export default function Execution() {
   }, [selectedProjectId, fetchTasks])
 
   const handleStatusChange = async (taskId, newStatus) => {
-    await supabase.from('tasks').update({ status: newStatus, ...(newStatus === 'done' ? { completed_at: new Date().toISOString() } : { completed_at: null }) }).eq('id', taskId)
+    await supabase.from('tasks').update({
+      status: newStatus,
+      ...(newStatus === 'done' ? { completed_at: new Date().toISOString() } : { completed_at: null })
+    }).eq('id', taskId)
     fetchTasks(selectedProjectId)
   }
 
@@ -647,114 +644,189 @@ export default function Execution() {
   }
 
   const selectedProject = projects.find(p => p.id === selectedProjectId)
+  const phases = getPhasesForProject(selectedProject)
+  const activePhase = selectedProject?.phase?.toLowerCase()
 
-  const filteredTasks = tasks.filter(t => phaseFilter === 'all' || t.phase === phaseFilter)
-
-  const tasksByStatus = STATUSES.reduce((acc, s) => {
-    acc[s.id] = filteredTasks.filter(t => t.status === s.id)
+  // Group tasks by phase (case-insensitive match)
+  const tasksByPhase = phases.reduce((acc, p) => {
+    acc[p.toLowerCase()] = tasks.filter(t => t.phase?.toLowerCase() === p.toLowerCase())
     return acc
   }, {})
+  const unassignedTasks = tasks.filter(t => !t.phase || !phases.map(p => p.toLowerCase()).includes(t.phase?.toLowerCase()))
 
-  const stats = [
-    { label: 'Total', value: filteredTasks.length, color: 'text-brand-charcoal-dark' },
-    { label: 'In Progress', value: tasksByStatus.in_progress?.length || 0, color: 'text-blue-600' },
-    { label: 'Blocked', value: tasksByStatus.blocked?.length || 0, color: 'text-status-red' },
-    { label: 'Done', value: tasksByStatus.done?.length || 0, color: 'text-status-green' },
-  ]
+  // Stats
+  const total = tasks.length
+  const done = tasks.filter(t => t.status === 'done').length
+  const inProgress = tasks.filter(t => t.status === 'in_progress').length
+  const blocked = tasks.filter(t => t.status === 'blocked').length
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-brand-charcoal-dark">Execution Tracker</h1>
-          <p className="text-sm text-brand-charcoal mt-1">Manage tasks and track progress across DMAIC phases.</p>
+    <div className="flex h-full overflow-hidden">
+      {/* Left sidebar — project list */}
+      <div className="w-60 flex-shrink-0 border-r border-gray-100 bg-white flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+          <p className="text-xs font-semibold text-brand-charcoal-dark uppercase tracking-wide">Projects</p>
         </div>
-        <button onClick={() => setModalConfig({ defaultStatus: 'todo' })} className="btn-primary flex items-center gap-2">
-          <Plus size={16} /> New Task
-        </button>
-      </div>
-
-      {/* Project Selector + Phase Filter */}
-      <div className="flex items-center gap-4 mb-6 flex-wrap">
-        <div className="flex-shrink-0">
-          <label className="label">Project</label>
-          <div className="relative">
-            <select
-              value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-              className="input pr-8 font-medium min-w-[260px]"
-            >
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="flex-shrink-0">
-          <label className="label">Phase Filter</label>
-          <div className="flex gap-1">
-            <button onClick={() => setPhaseFilter('all')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${phaseFilter === 'all' ? 'bg-brand-orange text-white' : 'bg-surface-secondary text-brand-charcoal hover:bg-surface-border'}`}>All</button>
-            {PHASES.map(p => (
-              <button key={p} onClick={() => setPhaseFilter(p)} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors capitalize ${phaseFilter === p ? 'bg-brand-orange text-white' : 'bg-surface-secondary text-brand-charcoal hover:bg-surface-border'}`}>{p}</button>
-            ))}
-          </div>
+        <div className="flex-1 overflow-y-auto py-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={18} className="animate-spin text-brand-orange" />
+            </div>
+          ) : projects.length === 0 ? (
+            <p className="text-xs text-brand-charcoal/50 text-center py-8">No active projects</p>
+          ) : (
+            projects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedProjectId(p.id)}
+                className={`w-full text-left px-4 py-2.5 transition-colors hover:bg-surface-secondary/50 ${selectedProjectId === p.id ? 'bg-brand-orange/5 border-r-2 border-brand-orange' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${HEALTH_DOT[p.health] || 'bg-gray-300'}`} />
+                  <span className={`text-sm leading-snug ${selectedProjectId === p.id ? 'text-brand-orange font-semibold' : 'text-brand-charcoal-dark font-medium'}`}>
+                    {p.name}
+                  </span>
+                </div>
+                {p.phase && (
+                  <p className="text-xs text-brand-charcoal/50 mt-0.5 pl-4 capitalize">{p.phase}</p>
+                )}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-brand-orange" />
-        </div>
-      ) : migrationNeeded ? (
-        <div className="p-6 bg-white border border-status-yellow rounded-xl">
-          <div className="flex items-center gap-2 text-status-yellow font-semibold mb-2"><AlertCircle size={16}/> Database Migration Required</div>
-          <p className="text-sm text-brand-charcoal">Run <strong>002_tasks_and_notes.sql</strong> in your Supabase SQL Editor to enable task tracking.</p>
-        </div>
-      ) : (
-        <>
-          {/* Stats row */}
-          <div className="flex items-center gap-4 mb-5 flex-wrap">
-            {stats.map(s => (
-              <div key={s.label} className="flex items-center gap-1.5">
-                <span className={`text-xl font-bold ${s.color}`}>{s.value}</span>
-                <span className="text-sm text-brand-charcoal">{s.label}</span>
+      {/* Right panel — action register */}
+      <div className="flex-1 overflow-y-auto bg-surface-secondary/30">
+        {!selectedProject ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <ClipboardList size={36} className="text-gray-300" />
+            <p className="text-sm text-brand-charcoal/50">Select a project to view its action register</p>
+          </div>
+        ) : migrationNeeded ? (
+          <div className="p-6">
+            <div className="p-6 bg-white border border-status-yellow rounded-xl">
+              <div className="flex items-center gap-2 text-status-yellow font-semibold mb-2"><AlertCircle size={16}/> Database Migration Required</div>
+              <p className="text-sm text-brand-charcoal">Run <strong>002_tasks_and_notes.sql</strong> in your Supabase SQL Editor to enable task tracking.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 space-y-4 max-w-4xl">
+            {/* Project header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${HEALTH_DOT[selectedProject.health] || 'bg-gray-300'}`} />
+                  <h2 className="text-xl font-bold text-brand-charcoal-dark">{selectedProject.name}</h2>
+                  {selectedProject.type && (
+                    <span className="text-xs bg-surface-secondary text-brand-charcoal px-2 py-0.5 rounded font-medium uppercase">
+                      {selectedProject.type}
+                    </span>
+                  )}
+                </div>
+                {selectedProject.phase && (
+                  <p className="text-sm text-brand-charcoal mt-0.5 ml-4.5">
+                    Current phase: <span className="font-semibold text-brand-orange capitalize">{selectedProject.phase}</span>
+                  </p>
+                )}
               </div>
-            ))}
-            {tasksByStatus.blocked?.length > 0 && (
-              <span className="ml-2 text-xs text-status-red bg-status-red-bg px-2.5 py-1 rounded-full font-medium">
-                ⚠ {tasksByStatus.blocked.length} task{tasksByStatus.blocked.length > 1 ? 's' : ''} blocked
-              </span>
+              <button
+                onClick={() => setModalConfig({ defaultPhase: activePhase || '' })}
+                className="btn-primary flex items-center gap-2 text-sm"
+              >
+                <Plus size={15} /> Add Task
+              </button>
+            </div>
+
+            {/* Stats bar */}
+            {total > 0 && (
+              <div className="bg-white rounded-lg border border-gray-100 px-5 py-3 flex items-center gap-6">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg font-bold text-brand-charcoal-dark">{total}</span>
+                  <span className="text-xs text-brand-charcoal/60">Total</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg font-bold text-blue-600">{inProgress}</span>
+                  <span className="text-xs text-brand-charcoal/60">In Progress</span>
+                </div>
+                {blocked > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-lg font-bold text-status-red">{blocked}</span>
+                    <span className="text-xs text-brand-charcoal/60">Blocked</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg font-bold text-status-green">{done}</span>
+                  <span className="text-xs text-brand-charcoal/60">Done</span>
+                </div>
+                <div className="ml-auto flex items-center gap-3">
+                  <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-status-green rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-sm font-semibold text-brand-charcoal-dark">{pct}% complete</span>
+                </div>
+              </div>
+            )}
+
+            {/* Phase sections */}
+            {tasksLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 size={24} className="animate-spin text-brand-orange" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {phases.map(phaseName => (
+                  <PhaseSection
+                    key={phaseName}
+                    phaseName={phaseName}
+                    tasks={tasksByPhase[phaseName.toLowerCase()] || []}
+                    isActive={phaseName.toLowerCase() === activePhase}
+                    onAddTask={(phase) => setModalConfig({ defaultPhase: phase })}
+                    onStatusChange={handleStatusChange}
+                    onEdit={(task) => setModalConfig({ task })}
+                    onDetail={(task) => setDetailTask(task)}
+                    onDelete={handleDelete}
+                  />
+                ))}
+
+                {/* Unassigned tasks */}
+                {unassignedTasks.length > 0 && (
+                  <PhaseSection
+                    phaseName="Unassigned"
+                    tasks={unassignedTasks}
+                    isActive={false}
+                    onAddTask={() => setModalConfig({ defaultPhase: '' })}
+                    onStatusChange={handleStatusChange}
+                    onEdit={(task) => setModalConfig({ task })}
+                    onDetail={(task) => setDetailTask(task)}
+                    onDelete={handleDelete}
+                  />
+                )}
+
+                {/* Empty state */}
+                {total === 0 && (
+                  <div className="bg-white rounded-lg border border-gray-100 px-6 py-12 text-center">
+                    <ClipboardList size={32} className="mx-auto text-gray-300 mb-3" />
+                    <p className="text-sm font-medium text-brand-charcoal-dark mb-1">No tasks yet</p>
+                    <p className="text-xs text-brand-charcoal/50 mb-4">Add your first task to start tracking work for this project.</p>
+                    <button onClick={() => setModalConfig({ defaultPhase: activePhase || '' })} className="btn-primary text-sm flex items-center gap-2 mx-auto">
+                      <Plus size={14} /> Add First Task
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
+        )}
+      </div>
 
-          {/* Kanban Board */}
-          {tasksLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-5 h-5 border-2 border-brand-orange/30 border-t-brand-orange rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="flex gap-4 overflow-x-auto pb-4">
-              {STATUSES.map(status => (
-                <KanbanColumn
-                  key={status.id}
-                  status={status}
-                  tasks={tasksByStatus[status.id] || []}
-                  onAddTask={() => setModalConfig({ defaultStatus: status.id })}
-                  onEdit={(task) => setModalConfig({ task })}
-                  onDetail={(task) => setDetailTask(task)}
-                  onStatusChange={handleStatusChange}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Task Edit Modal */}
+      {/* Task Add/Edit Modal */}
       {modalConfig && selectedProject && userProfile && (
         <TaskModal
           task={modalConfig.task}
-          project={{ ...selectedProject, phase: modalConfig.task?.phase || selectedProject.phase }}
+          project={selectedProject}
+          defaultPhase={modalConfig.defaultPhase}
           companyId={userProfile.company_id}
           userId={userProfile.id}
           onClose={() => setModalConfig(null)}
