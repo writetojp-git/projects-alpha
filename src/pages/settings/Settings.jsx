@@ -6,7 +6,7 @@ import {
   Settings as SettingsIcon, Plus, Pencil, Trash2, X, Check,
   Loader2, AlertCircle, ToggleLeft, ToggleRight, MapPin, Users,
   User, Building2, Tag, ChevronDown, Shield, Mail, Phone,
-  Globe, Clock, CheckCircle2, XCircle
+  Globe, Clock, CheckCircle2, XCircle, Sliders
 } from 'lucide-react'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -661,6 +661,242 @@ function BenefitCategoryManager({ userProfile }) {
   )
 }
 
+// ── SCORING CRITERIA ──────────────────────────────────────────
+const DEFAULT_CRITERIA = [
+  { key: 'impact',      label: 'Business Impact',      description: 'How significant is the expected benefit?',            low_label: 'Minimal',      high_label: 'Transformational', max_score: 5, sort_order: 1, is_default: true, is_active: true },
+  { key: 'alignment',   label: 'Strategic Alignment',  description: 'How well does this align with company goals?',        low_label: 'Tangential',   high_label: 'Core priority',    max_score: 5, sort_order: 2, is_default: true, is_active: true },
+  { key: 'feasibility', label: 'Feasibility',          description: 'How achievable is this with current resources?',      low_label: 'Very difficult', high_label: 'Very feasible',  max_score: 5, sort_order: 3, is_default: true, is_active: true },
+  { key: 'risk',        label: 'Risk Level',           description: 'How low is the delivery / execution risk?',           low_label: 'High risk',    high_label: 'Low risk',         max_score: 5, sort_order: 4, is_default: true, is_active: true },
+]
+
+function ScoringCriteriaManager({ userProfile }) {
+  const [criteria, setCriteria]   = useState([])
+  const [loading,  setLoading]    = useState(true)
+  const [showAdd,  setShowAdd]    = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [editForm,  setEditForm]  = useState({})
+  const [newForm,   setNewForm]   = useState({ label: '', description: '', low_label: 'Low', high_label: 'High', max_score: 5 })
+  const [saving,    setSaving]    = useState(false)
+  const [error,     setError]     = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('scoring_criteria').select('*')
+      .eq('company_id', userProfile.company_id).order('sort_order')
+    if (!data || data.length === 0) {
+      // Seed the 4 defaults on first visit
+      const rows = DEFAULT_CRITERIA.map(d => ({ ...d, company_id: userProfile.company_id }))
+      const { data: seeded } = await supabase.from('scoring_criteria').insert(rows).select()
+      setCriteria(seeded || rows)
+    } else {
+      setCriteria(data)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [userProfile.company_id])
+
+  const slugKey = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+
+  const handleAdd = async () => {
+    if (!newForm.label.trim()) return
+    setSaving(true); setError('')
+    const maxOrder = criteria.length > 0 ? Math.max(...criteria.map(c => c.sort_order)) : 0
+    const { error: err } = await supabase.from('scoring_criteria').insert({
+      company_id:  userProfile.company_id,
+      key:         slugKey(newForm.label),
+      label:       newForm.label.trim(),
+      description: newForm.description.trim() || null,
+      low_label:   newForm.low_label.trim() || 'Low',
+      high_label:  newForm.high_label.trim() || 'High',
+      max_score:   Math.min(10, Math.max(1, parseInt(newForm.max_score) || 5)),
+      sort_order:  maxOrder + 1,
+      is_default:  false,
+      is_active:   true,
+    })
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setShowAdd(false)
+    setNewForm({ label: '', description: '', low_label: 'Low', high_label: 'High', max_score: 5 })
+    load()
+  }
+
+  const handleUpdate = async (id) => {
+    setSaving(true); setError('')
+    const { error: err } = await supabase.from('scoring_criteria').update({
+      label:       editForm.label?.trim(),
+      description: editForm.description?.trim() || null,
+      low_label:   editForm.low_label?.trim() || 'Low',
+      high_label:  editForm.high_label?.trim() || 'High',
+      max_score:   Math.min(10, Math.max(1, parseInt(editForm.max_score) || 5)),
+    }).eq('id', id)
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setEditingId(null)
+    load()
+  }
+
+  const handleToggle = async (c) => {
+    await supabase.from('scoring_criteria').update({ is_active: !c.is_active }).eq('id', c.id)
+    load()
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this scoring criterion?')) return
+    await supabase.from('scoring_criteria').delete().eq('id', id)
+    load()
+  }
+
+  const totalMax = criteria.filter(c => c.is_active).reduce((a, c) => a + c.max_score, 0)
+
+  return (
+    <div className="card">
+      <SectionHeader
+        title="Scoring Criteria"
+        description={`Define how intake requests are prioritized. Active criteria total: ${totalMax} points max.`}
+        action={
+          <button onClick={() => { setShowAdd(true); setError('') }}
+            className="btn-primary flex items-center gap-1.5 text-sm py-1.5 px-3">
+            <Plus size={14} /> Add Criterion
+          </button>
+        }
+      />
+      <ErrorBanner msg={error} />
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="border border-brand-orange/30 bg-brand-orange/5 rounded-xl p-4 mb-4 space-y-3">
+          <p className="text-sm font-semibold text-brand-charcoal-dark">New Scoring Criterion</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Label *</label>
+              <input className="input py-2 text-sm" placeholder="e.g. Customer Impact"
+                value={newForm.label} onChange={e => setNewForm(f => ({ ...f, label: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label text-xs">Max Score (1–10)</label>
+              <input type="number" min={1} max={10} className="input py-2 text-sm"
+                value={newForm.max_score} onChange={e => setNewForm(f => ({ ...f, max_score: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Description</label>
+            <input className="input py-2 text-sm" placeholder="What does this criterion measure?"
+              value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Low End Label</label>
+              <input className="input py-2 text-sm" placeholder="e.g. Minimal"
+                value={newForm.low_label} onChange={e => setNewForm(f => ({ ...f, low_label: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label text-xs">High End Label</label>
+              <input className="input py-2 text-sm" placeholder="e.g. Transformational"
+                value={newForm.high_label} onChange={e => setNewForm(f => ({ ...f, high_label: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} className="btn-primary py-1.5 px-4 text-sm" disabled={saving}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : 'Add'}
+            </button>
+            <button onClick={() => setShowAdd(false)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={22} className="animate-spin text-brand-orange" /></div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {criteria.map(c => (
+            <div key={c.id} className={`py-3 ${!c.is_active ? 'opacity-50' : ''}`}>
+              {editingId === c.id ? (
+                <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-xs">Label</label>
+                      <input className="input py-2 text-sm" value={editForm.label || ''}
+                        onChange={e => setEditForm(f => ({ ...f, label: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label text-xs">Max Score (1–10)</label>
+                      <input type="number" min={1} max={10} className="input py-2 text-sm" value={editForm.max_score || 5}
+                        onChange={e => setEditForm(f => ({ ...f, max_score: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label text-xs">Description</label>
+                    <input className="input py-2 text-sm" value={editForm.description || ''}
+                      onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-xs">Low End Label</label>
+                      <input className="input py-2 text-sm" value={editForm.low_label || ''}
+                        onChange={e => setEditForm(f => ({ ...f, low_label: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label text-xs">High End Label</label>
+                      <input className="input py-2 text-sm" value={editForm.high_label || ''}
+                        onChange={e => setEditForm(f => ({ ...f, high_label: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleUpdate(c.id)} className="btn-primary py-1.5 px-4 text-sm" disabled={saving}>
+                      {saving ? <Loader2 size={13} className="animate-spin" /> : 'Save'}
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm text-brand-charcoal-dark">{c.label}</span>
+                      <span className="text-xs bg-gray-100 text-brand-charcoal px-2 py-0.5 rounded-full">max {c.max_score}</span>
+                      {c.is_default && (
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Default</span>
+                      )}
+                      {!c.is_active && (
+                        <span className="text-xs bg-red-50 text-red-500 px-2 py-0.5 rounded-full">Disabled</span>
+                      )}
+                    </div>
+                    {c.description && <p className="text-xs text-brand-charcoal mt-0.5">{c.description}</p>}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      1 = {c.low_label} &nbsp;·&nbsp; {c.max_score} = {c.high_label}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => handleToggle(c)} title={c.is_active ? 'Disable' : 'Enable'}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                      {c.is_active
+                        ? <ToggleRight size={18} className="text-green-500" />
+                        : <ToggleLeft size={18} className="text-gray-400" />}
+                    </button>
+                    <button onClick={() => {
+                      setEditingId(c.id)
+                      setEditForm({ label: c.label, description: c.description || '', low_label: c.low_label || 'Low', high_label: c.high_label || 'High', max_score: c.max_score })
+                    }} className="p-1.5 text-brand-charcoal hover:bg-gray-100 rounded-lg transition-colors">
+                      <Pencil size={13} />
+                    </button>
+                    {!c.is_default && (
+                      <button onClick={() => handleDelete(c.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── MAIN SETTINGS PAGE ────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuth()
@@ -694,10 +930,11 @@ export default function Settings() {
   }
 
   const tabs = [
-    { id: 'profile',  label: 'My Profile',     icon: User },
-    { id: 'sites',    label: 'Sites',           icon: MapPin },
-    { id: 'users',    label: 'Users',           icon: Users,   adminOnly: true },
-    { id: 'benefits', label: 'Benefit Types',   icon: Tag },
+    { id: 'profile',  label: 'My Profile',       icon: User },
+    { id: 'sites',    label: 'Sites',             icon: MapPin },
+    { id: 'users',    label: 'Users',             icon: Users,   adminOnly: true },
+    { id: 'benefits', label: 'Benefit Types',     icon: Tag },
+    { id: 'scoring',  label: 'Scoring Criteria',  icon: Sliders },
   ].filter(t => !t.adminOnly || isAdmin(userProfile.role) || ['champion', 'program_leader'].includes(userProfile.role))
 
   return (
@@ -733,6 +970,10 @@ export default function Settings() {
 
       {activeTab === 'benefits' && (
         <BenefitCategoryManager userProfile={userProfile} />
+      )}
+
+      {activeTab === 'scoring' && (
+        <ScoringCriteriaManager userProfile={userProfile} />
       )}
     </div>
   )

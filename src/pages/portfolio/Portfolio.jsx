@@ -9,53 +9,34 @@ import {
 } from 'lucide-react'
 
 // ─── Scoring Modal ───────────────────────────────────────────────────────────
-function ScoringModal({ request, onClose, onSaved }) {
-  const [scores, setScores] = useState({
-    impact: request.attachments?.scores?.impact ?? 3,
-    alignment: request.attachments?.scores?.alignment ?? 3,
-    feasibility: request.attachments?.scores?.feasibility ?? 3,
-    risk: request.attachments?.scores?.risk ?? 3,
-  })
+function ScoringModal({ request, onClose, onSaved, companyId }) {
+  const [criteria, setCriteria] = useState([])
+  const [scores, setScores] = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const criteria = [
-    {
-      key: 'impact',
-      label: 'Business Impact',
-      desc: 'How significant is the expected benefit?',
-      low: 'Minimal',
-      high: 'Transformational',
-    },
-    {
-      key: 'alignment',
-      label: 'Strategic Alignment',
-      desc: 'How well does this align with company goals?',
-      low: 'Tangential',
-      high: 'Core priority',
-    },
-    {
-      key: 'feasibility',
-      label: 'Feasibility',
-      desc: 'How achievable is this with current resources?',
-      low: 'Very difficult',
-      high: 'Very feasible',
-    },
-    {
-      key: 'risk',
-      label: 'Risk Level',
-      desc: 'How low is the delivery / execution risk?',
-      low: 'High risk',
-      high: 'Low risk',
-    },
-  ]
+  useEffect(() => {
+    supabase.from('scoring_criteria').select('*')
+      .eq('company_id', companyId).eq('is_active', true).order('sort_order')
+      .then(({ data }) => {
+        const list = data || []
+        setCriteria(list)
+        // Initialize scores from saved values or default to midpoint
+        const init = {}
+        list.forEach(c => {
+          init[c.key] = request.attachments?.scores?.[c.key] ?? Math.ceil(c.max_score / 2)
+        })
+        setScores(init)
+      })
+  }, [companyId])
 
-  const total = Object.values(scores).reduce((a, b) => a + b, 0)
+  const total = criteria.reduce((sum, c) => sum + (scores[c.key] || 0), 0)
+  const maxTotal = criteria.reduce((sum, c) => sum + c.max_score, 0)
 
   const handleSave = async () => {
     setSaving(true)
     setError('')
-    const existingAttachments = Array.isArray(request.attachments) ? request.attachments : []
+    const existingAttachments = Array.isArray(request.attachments) ? request.attachments : {}
     const { error: err } = await supabase
       .from('intake_requests')
       .update({
@@ -71,8 +52,8 @@ function ScoringModal({ request, onClose, onSaved }) {
     }
   }
 
-  const scoreColor = (s) =>
-    s <= 2 ? 'text-status-red' : s === 3 ? 'text-status-yellow' : 'text-status-green'
+  const scoreColor = (s, max) =>
+    s <= max * 0.4 ? 'text-status-red' : s <= max * 0.6 ? 'text-status-yellow' : 'text-status-green'
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -88,31 +69,34 @@ function ScoringModal({ request, onClose, onSaved }) {
         </div>
 
         <div className="p-6 space-y-6">
+          {criteria.length === 0 && (
+            <p className="text-sm text-brand-charcoal text-center py-4">Loading criteria…</p>
+          )}
           {criteria.map((c) => (
             <div key={c.key}>
               <div className="flex items-center justify-between mb-1">
                 <div>
                   <span className="text-sm font-semibold text-brand-charcoal-dark">{c.label}</span>
-                  <span className="text-xs text-brand-charcoal ml-2">{c.desc}</span>
+                  {c.description && <span className="text-xs text-brand-charcoal ml-2">{c.description}</span>}
                 </div>
-                <span className={`text-lg font-bold ${scoreColor(scores[c.key])}`}>{scores[c.key]}</span>
+                <span className={`text-lg font-bold ${scoreColor(scores[c.key] || 0, c.max_score)}`}>{scores[c.key] || 0}</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-brand-charcoal w-20 text-right">{c.low}</span>
+                <span className="text-xs text-brand-charcoal w-20 text-right">{c.low_label}</span>
                 <input
                   type="range"
                   min={1}
-                  max={5}
+                  max={c.max_score}
                   step={1}
-                  value={scores[c.key]}
+                  value={scores[c.key] || Math.ceil(c.max_score / 2)}
                   onChange={(e) => setScores({ ...scores, [c.key]: Number(e.target.value) })}
                   className="flex-1 accent-brand-orange"
                 />
-                <span className="text-xs text-brand-charcoal w-20">{c.high}</span>
+                <span className="text-xs text-brand-charcoal w-20">{c.high_label}</span>
               </div>
               <div className="flex justify-between mt-1 px-20">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span key={n} className={`text-xs ${scores[c.key] === n ? 'font-bold text-brand-orange' : 'text-brand-charcoal/50'}`}>{n}</span>
+                {Array.from({ length: c.max_score }, (_, i) => i + 1).map((n) => (
+                  <span key={n} className={`text-xs ${(scores[c.key] || 0) === n ? 'font-bold text-brand-orange' : 'text-brand-charcoal/50'}`}>{n}</span>
                 ))}
               </div>
             </div>
@@ -122,10 +106,10 @@ function ScoringModal({ request, onClose, onSaved }) {
         <div className="flex items-center justify-between px-6 py-4 bg-surface-secondary rounded-b-xl border-t border-surface-border">
           <div>
             <span className="text-sm text-brand-charcoal">Total score: </span>
-            <span className={`text-2xl font-bold ${total >= 16 ? 'text-status-green' : total >= 10 ? 'text-status-yellow' : 'text-status-red'}`}>
+            <span className={`text-2xl font-bold ${total >= maxTotal * 0.8 ? 'text-status-green' : total >= maxTotal * 0.5 ? 'text-status-yellow' : 'text-status-red'}`}>
               {total}
             </span>
-            <span className="text-sm text-brand-charcoal">/20</span>
+            <span className="text-sm text-brand-charcoal">/{maxTotal}</span>
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary">Cancel</button>
@@ -277,7 +261,7 @@ function ConvertModal({ request, profile, onClose, onConverted }) {
 // ─── Score Bar ────────────────────────────────────────────────────────────────
 function ScoreBar({ score, max = 20 }) {
   const pct = Math.round((score / max) * 100)
-  const color = score >= 16 ? 'bg-status-green' : score >= 10 ? 'bg-status-yellow' : 'bg-status-red'
+  const color = pct >= 80 ? 'bg-status-green' : pct >= 50 ? 'bg-status-yellow' : 'bg-status-red'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-2 bg-surface-secondary rounded-full overflow-hidden">
@@ -801,6 +785,7 @@ setLoading(false)
           request={scoringItem}
           onClose={() => setScoringItem(null)}
           onSaved={() => { setScoringItem(null); fetchData(userProfile) }}
+          companyId={userProfile?.company_id}
         />
       )}
       {convertingItem && (
